@@ -4,18 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`ipextract` is a single-binary Rust CLI tool that extracts IP addresses from text input. The entire application logic is contained in `src/main.rs` as a straightforward command-line utility.
+`extract` is a single-binary Rust CLI tool that extracts network identifiers from text input. The entire application logic is contained in `src/main.rs` as a straightforward command-line utility.
 
 ## Core Architecture
 
 The application follows a simple pipeline architecture:
 1. **Input processing**: Reads from stdin line by line
 2. **Text parsing**: Uses regex patterns to split text on delimiters (`DELIMITERS` static)
-3. **IP extraction**: Multi-stage processing through helper functions to handle various IP formats
-4. **Output**: Prints extracted IPs to stdout
+3. **Network identifier extraction**: Multi-stage processing through helper functions to handle various formats
+4. **Output**: Prints extracted identifiers to stdout
 
-Key extraction logic flow:
-- `ip_finder()` → main extraction function that processes text chunks
+Key extraction functions:
+- `ip_finder()` → extracts IP addresses (IPv4/IPv6 with ports, brackets, quotes)
+- `cidr_finder()` → extracts CIDR notation (192.168.1.0/24, 2001:db8::/32)
+- `mac_finder()` → extracts MAC addresses (colon, dash, Cisco formats)
+- `range_finder()` → extracts IP ranges (192.168.1.1-192.168.1.10)
 - `strip_quotes()` → removes surrounding quotes
 - `remove_port_if_present()` → handles port removal logic (IPv4/IPv6 with different patterns)
 - `strip_brackets()` → removes IPv6 brackets
@@ -49,8 +52,11 @@ cargo test test_ip_finder_basic
 
 Uses `assert_cmd` for integration testing with real CLI invocation. Tests cover:
 - Various IP formats (IPv4, IPv6, with/without ports, brackets, quotes)
+- CIDR notation extraction and validation
+- MAC address formats (colon, dash, Cisco)
+- IP range extraction
 - Different delimiter types and combinations
-- Complex text scenarios with mixed patterns
+- Complex text scenarios with mixed patterns (including comprehensive user complaint blob)
 - CLI flags and version commands
 
-Test patterns focus on the `ip_finder()` function which contains the core extraction logic.
+Test patterns focus on all extraction functions and include realistic text blob scenarios.
