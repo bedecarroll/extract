@@ -1,0 +1,14 @@
+[package]
+name = "ipextract"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+regex = "1"
+log = "0.4"
+env_logger = "0.11.8"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.0"
