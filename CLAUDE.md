@@ -46,6 +46,7 @@ cargo test test_ip_finder_basic
 ### Release Process
 - Push tags matching `v*` pattern to trigger GitHub Actions release workflow
 - Workflow builds cross-platform binaries (Linux, macOS, Windows) with musl variants
+- Binaries are released directly without compression for simple download and execution
 - Releases are automatically tagged as "latest" for stable download URLs
 
 ## Testing Strategy

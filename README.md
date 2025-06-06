@@ -4,7 +4,9 @@ A Rust command-line tool for extracting network identifiers from text input.
 
 ## Overview
 
-`extract` intelligently parses text to identify and extract network identifiers including IP addresses, CIDR blocks, MAC addresses, and IP ranges from unstructured text blobs.
+`extract` intelligently parses text to identify and extract network identifiers
+including IP addresses, CIDR blocks, MAC addresses, and IP ranges from
+unstructured text blobs.
 
 ## Features
 
@@ -23,31 +25,39 @@ A Rust command-line tool for extracting network identifiers from text input.
 Download the latest release for your platform:
 
 **Linux (x86_64):**
+
 ```bash
-curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-linux-x86_64 -o extract
+chmod +x extract
 sudo mv extract /usr/local/bin/
 ```
 
 **Linux (musl):**
+
 ```bash
-curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-linux-x86_64-musl.tar.gz | tar xz
+curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-linux-x86_64-musl -o extract
+chmod +x extract
 sudo mv extract /usr/local/bin/
 ```
 
 **macOS (Intel):**
+
 ```bash
-curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-macos-x86_64.tar.gz | tar xz
+curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-macos-x86_64 -o extract
+chmod +x extract
 sudo mv extract /usr/local/bin/
 ```
 
 **macOS (Apple Silicon):**
+
 ```bash
-curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-macos-aarch64.tar.gz | tar xz
+curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-macos-aarch64 -o extract
+chmod +x extract
 sudo mv extract /usr/local/bin/
 ```
 
 **Windows:**
-Download `extract-windows-x86_64.zip` from the [latest release](https://github.com/bedecarroll/extract/releases/latest) and extract it.
+Download `extract-windows-x86_64.exe` from the [latest release](https://github.com/bedecarroll/extract/releases/latest) and run directly.
 
 ### Build from Source
 
@@ -66,6 +76,7 @@ echo "Server at 192.168.1.1 connected to 10.0.0.0/8" | extract
 ```
 
 Output:
+
 ```
 192.168.1.1
 10.0.0.0/8
@@ -90,11 +101,13 @@ Type your text and end with `EOF` or Ctrl-D.
 ## Examples
 
 ### Complex Network Text
+
 ```bash
 echo "MAC: 00:11:22:33:44:55 connects to 192.168.1.1:443 via 10.0.0.0/24" | extract
 ```
 
 Output:
+
 ```
 192.168.1.1
 10.0.0.0/24
@@ -102,21 +115,25 @@ Output:
 ```
 
 ### Support Ticket Analysis
+
 ```bash
 cat support_ticket.txt | extract
 ```
 
 ### Log File Processing
+
 ```bash
 tail -f /var/log/firewall.log | extract | sort | uniq
 ```
 
 ### Network Documentation
+
 ```bash
 echo "Scan range 172.16.1.1-172.16.1.254 excluding 172.16.1.0/28" | extract
 ```
 
 Output:
+
 ```
 172.16.1.1-172.16.1.254
 172.16.1.0/28
@@ -125,31 +142,37 @@ Output:
 ## Supported Formats
 
 ### IP Addresses
+
 - Plain IPs: `192.168.1.1`, `2001:db8::1`
 - With ports: `192.168.1.1:8080`, `[2001:db8::1]:443`
 - Quoted: `"192.168.1.1"`, `'192.168.1.1'`
 - Prefixed: `src:192.168.1.1`, `dst:10.0.0.1`
 
 ### CIDR Blocks
+
 - IPv4: `192.168.1.0/24`, `10.0.0.0/8`
 - IPv6: `2001:db8::/32`, `fe80::/10`
 
 ### MAC Addresses
+
 - Colon format: `00:11:22:33:44:55`
 - Dash format: `00-11-22-33-44-55`
 - Cisco format: `0011.2233.4455`
 
 ### IP Ranges
+
 - IPv4 ranges: `192.168.1.1-192.168.1.10`
 - IPv6 ranges: `2001:db8::1-2001:db8::10`
 
 ### Delimiters
+
 - Spaces, commas, pipes, tabs, newlines
 - Mixed punctuation and whitespace
 
 ## Unix Philosophy Integration
 
-`extract` follows Unix principles - it does one thing well. Combine with standard tools:
+`extract` follows Unix principles - it does one thing well. Combine with
+standard tools:
 
 ```bash
 # Remove duplicates
@@ -173,7 +196,8 @@ Run the comprehensive test suite:
 cargo test
 ```
 
-Tests include unit tests for each extraction function and integration tests with realistic text blobs.
+Tests include unit tests for each extraction function and integration tests
+with realistic text blobs.
 
 ## Dependencies
 
@@ -183,4 +207,5 @@ Tests include unit tests for each extraction function and integration tests with
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE)
+file for details.
