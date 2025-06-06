@@ -24,30 +24,30 @@ Download the latest release for your platform:
 
 **Linux (x86_64):**
 ```bash
-curl -L https://github.com/USERNAME/REPO/releases/latest/download/extract-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-linux-x86_64.tar.gz | tar xz
 sudo mv extract /usr/local/bin/
 ```
 
 **Linux (musl):**
 ```bash
-curl -L https://github.com/USERNAME/REPO/releases/latest/download/extract-linux-x86_64-musl.tar.gz | tar xz
+curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-linux-x86_64-musl.tar.gz | tar xz
 sudo mv extract /usr/local/bin/
 ```
 
 **macOS (Intel):**
 ```bash
-curl -L https://github.com/USERNAME/REPO/releases/latest/download/extract-macos-x86_64.tar.gz | tar xz
+curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-macos-x86_64.tar.gz | tar xz
 sudo mv extract /usr/local/bin/
 ```
 
 **macOS (Apple Silicon):**
 ```bash
-curl -L https://github.com/USERNAME/REPO/releases/latest/download/extract-macos-aarch64.tar.gz | tar xz
+curl -L https://github.com/bedecarroll/extract/releases/latest/download/extract-macos-aarch64.tar.gz | tar xz
 sudo mv extract /usr/local/bin/
 ```
 
 **Windows:**
-Download `extract-windows-x86_64.zip` from the [latest release](https://github.com/USERNAME/REPO/releases/latest) and extract it.
+Download `extract-windows-x86_64.zip` from the [latest release](https://github.com/bedecarroll/extract/releases/latest) and extract it.
 
 ### Build from Source
 
@@ -183,4 +183,4 @@ Tests include unit tests for each extraction function and integration tests with
 
 ## License
 
-This project uses Cargo's default license configuration.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

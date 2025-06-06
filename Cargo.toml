@@ -2,6 +2,11 @@
 name = "extract"
 version = "0.0.1"
 edition = "2021"
+description = "Extract network identifiers from text"
+repository = "https://github.com/bedecarroll/extract"
+license = "MIT"
+keywords = ["network", "parsing", "ip", "mac", "cidr"]
+categories = ["command-line-utilities", "text-processing"]
 
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
