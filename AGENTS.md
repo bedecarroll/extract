@@ -7,5 +7,6 @@ When modifying Rust source code in this project:
 
 1. Format the code with `cargo fmt --all`.
 2. Run the full test suite using `cargo test`.
+3. Write commit messages using the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.
 
-Ensure both steps succeed before committing changes.
+Ensure all steps succeed before committing changes.
