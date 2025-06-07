@@ -17,6 +17,7 @@ unstructured text blobs.
 - **Smart Parsing**: Handles quotes, brackets, and various delimiters
 - **Complex Text**: Works with logs, support tickets, and mixed content
 - **Debug Logging**: Optional verbose output for troubleshooting
+- **Streaming Processing**: Lines are processed one by one for low memory usage
 
 ## Installation
 
@@ -198,6 +199,16 @@ cargo test
 
 Tests include unit tests for each extraction function and integration tests
 with realistic text blobs.
+
+## Benchmarking
+
+Criterion benchmarks are included to measure performance. Run:
+
+```bash
+cargo bench --bench performance
+```
+
+This executes sample benchmarks to evaluate throughput of the CLI.
 
 ## Dependencies
 
