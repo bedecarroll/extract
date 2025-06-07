@@ -339,6 +339,9 @@ mod tests {
     use super::*;
     use assert_cmd::Command;
     use predicates::prelude::*;
+    use assert_cmd::prelude::*;
+    use std::io::{Read, Write};
+    use std::process::{Command as StdCommand, Stdio};
 
     const EXAMPLE_V6_1: &str = "2001:db8::1";
     const EXAMPLE_V6_2: &str = "fdbd:db8::2";
@@ -386,6 +389,30 @@ mod tests {
             .assert()
             .success()
             .stdout("192.168.1.1\n10.0.0.0/8\n00:11:22:33:44:55\n172.16.1.1-172.16.1.10\n");
+    }
+
+    #[test]
+    fn test_no_panic_on_broken_pipe() {
+        let mut child = StdCommand::cargo_bin("extract")
+            .unwrap()
+            .stdout(Stdio::piped())
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        {
+            let mut stdin = child.stdin.take().unwrap();
+            writeln!(stdin, "1.1.1.1 2.2.2.2 3.3.3.3").unwrap();
+            writeln!(stdin, "EOF").unwrap();
+        }
+
+        let mut stdout = child.stdout.take().unwrap();
+        let mut buf = [0u8; 16];
+        let _ = stdout.read(&mut buf).unwrap();
+        drop(stdout);
+
+        let status = child.wait().unwrap();
+        assert!(status.success());
     }
 
     #[test]
