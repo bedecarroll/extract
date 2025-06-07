@@ -293,45 +293,44 @@ fn main() {
     eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
 
     let stdin = io::stdin();
-    let mut lines = Vec::new();
     for line in stdin.lock().lines() {
         match line {
             Ok(l) => {
                 if l == "EOF" {
                     break;
                 }
-                lines.push(l);
+
+                debug!("Processing line: {}", l);
+
+                let ips = ip_finder(&l);
+                debug!("Found IPs: {:?}", ips);
+                for ip in ips {
+                    println!("{}", ip);
+                }
+
+                let cidrs = cidr_finder(&l);
+                debug!("Found CIDRs: {:?}", cidrs);
+                for cidr in cidrs {
+                    println!("{}", cidr);
+                }
+
+                let macs = mac_finder(&l);
+                debug!("Found MACs: {:?}", macs);
+                for mac in macs {
+                    println!("{}", mac);
+                }
+
+                let ranges = range_finder(&l);
+                debug!("Found ranges: {:?}", ranges);
+                for range in ranges {
+                    println!("{}", range);
+                }
             }
             Err(e) => {
                 eprintln!("Error reading input: {}", e);
                 break;
             }
         }
-    }
-
-    let mut all_tokens = Vec::new();
-    for line in lines {
-        debug!("Processing line: {}", line);
-
-        let ips = ip_finder(&line);
-        debug!("Found IPs: {:?}", ips);
-        all_tokens.extend(ips);
-
-        let cidrs = cidr_finder(&line);
-        debug!("Found CIDRs: {:?}", cidrs);
-        all_tokens.extend(cidrs);
-
-        let macs = mac_finder(&line);
-        debug!("Found MACs: {:?}", macs);
-        all_tokens.extend(macs);
-
-        let ranges = range_finder(&line);
-        debug!("Found ranges: {:?}", ranges);
-        all_tokens.extend(ranges);
-    }
-
-    for token in all_tokens {
-        println!("{}", token);
     }
 }
 
