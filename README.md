@@ -84,13 +84,13 @@ Output:
 
 ### Interactive Mode
 
-Run without arguments to enter interactive mode:
+Run without arguments to launch your `$EDITOR` for interactive input. If no editor is found, you'll be prompted to type the text directly:
 
 ```bash
 extract
 ```
 
-Type your text and end with `EOF` or Ctrl-D.
+Enter your text in the editor and save. If using the stdin fallback, end the input with Ctrl-D when finished.
 
 ### Command Options
 
