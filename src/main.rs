@@ -1,7 +1,9 @@
+use atty::Stream;
 use clap::{Parser, Subcommand};
+use edit;
 use log::{debug, LevelFilter};
 use regex::Regex;
-use std::io::{self, BufRead};
+use std::io::{self, ErrorKind, Read};
 use std::net::IpAddr;
 use std::sync::LazyLock;
 
@@ -290,54 +292,68 @@ fn main() {
         return;
     }
 
-    eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
+    let mut input = String::new();
 
-    let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        match line {
-            Ok(l) => {
-                if l == "EOF" {
-                    break;
-                }
-
-                debug!("Processing line: {}", l);
-
-                let ips = ip_finder(&l);
-                debug!("Found IPs: {:?}", ips);
-                for ip in ips {
-                    println!("{}", ip);
-                }
-
-                let cidrs = cidr_finder(&l);
-                debug!("Found CIDRs: {:?}", cidrs);
-                for cidr in cidrs {
-                    println!("{}", cidr);
-                }
-
-                let macs = mac_finder(&l);
-                debug!("Found MACs: {:?}", macs);
-                for mac in macs {
-                    println!("{}", mac);
-                }
-
-                let ranges = range_finder(&l);
-                debug!("Found ranges: {:?}", ranges);
-                for range in ranges {
-                    println!("{}", range);
-                }
-            }
+    if atty::is(Stream::Stdin) {
+        eprintln!("Opening $EDITOR for input. Save and quit to continue.");
+        match edit::edit("") {
+            Ok(text) => input = text,
             Err(e) => {
-                eprintln!("Error reading input: {}", e);
-                break;
+                if e.kind() == ErrorKind::NotFound {
+                    eprintln!("No editor found. Falling back to stdin. End input with Ctrl-D.");
+                    if let Err(err) = io::stdin().read_to_string(&mut input) {
+                        eprintln!("Error reading input: {}", err);
+                        return;
+                    }
+                } else {
+                    eprintln!("Error launching editor: {}", e);
+                    return;
+                }
             }
         }
+    } else {
+        let stdin = io::stdin();
+        if let Err(e) = stdin.lock().read_to_string(&mut input) {
+            eprintln!("Error reading input: {}", e);
+            return;
+        }
+    }
+
+    let mut lines = Vec::new();
+    for line in input.lines() {
+        lines.push(line.to_string());
+    }
+
+    let mut all_tokens = Vec::new();
+    for line in lines {
+        debug!("Processing line: {}", line);
+
+        let ips = ip_finder(&line);
+        debug!("Found IPs: {:?}", ips);
+        all_tokens.extend(ips);
+
+        let cidrs = cidr_finder(&line);
+        debug!("Found CIDRs: {:?}", cidrs);
+        all_tokens.extend(cidrs);
+
+        let macs = mac_finder(&line);
+        debug!("Found MACs: {:?}", macs);
+        all_tokens.extend(macs);
+
+        let ranges = range_finder(&line);
+        debug!("Found ranges: {:?}", ranges);
+        all_tokens.extend(ranges);
+    }
+
+    for token in all_tokens {
+        println!("{}", token);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_cmd::prelude::*;
+    use assert_cmd::cargo::CommandCargoExt;
     use assert_cmd::Command;
     use predicates::prelude::*;
     use std::io::{Read, Write};
@@ -365,18 +381,16 @@ mod tests {
     fn test_main_debug_flag() {
         let mut cmd = Command::cargo_bin("extract").unwrap();
         cmd.arg("--debug")
-            .write_stdin("EOF\n")
+            .write_stdin("1.2.3.4\n")
             .assert()
             .success()
-            .stderr(predicate::str::contains(
-                "Input text. End input with Ctrl-d or EOF on a new line.",
-            ));
+            .stderr(predicate::str::contains("Processing line: 1.2.3.4"));
     }
 
     #[test]
     fn test_main_prints_extracted_ips() {
         let mut cmd = Command::cargo_bin("extract").unwrap();
-        cmd.write_stdin("1.2.3.4 5.6.7.8\nEOF\n")
+        cmd.write_stdin("1.2.3.4 5.6.7.8\n")
             .assert()
             .success()
             .stdout("1.2.3.4\n5.6.7.8\n");
@@ -385,7 +399,7 @@ mod tests {
     #[test]
     fn test_main_extracts_all_network_tokens() {
         let mut cmd = Command::cargo_bin("extract").unwrap();
-        cmd.write_stdin("IP: 192.168.1.1, CIDR: 10.0.0.0/8, MAC: 00:11:22:33:44:55, Range: 172.16.1.1-172.16.1.10\nEOF\n")
+        cmd.write_stdin("IP: 192.168.1.1, CIDR: 10.0.0.0/8, MAC: 00:11:22:33:44:55, Range: 172.16.1.1-172.16.1.10\n")
             .assert()
             .success()
             .stdout("192.168.1.1\n10.0.0.0/8\n00:11:22:33:44:55\n172.16.1.1-172.16.1.10\n");
