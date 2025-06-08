@@ -45,10 +45,10 @@ fn is_an_ip(ip: &str) -> bool {
 
 /// Removes quotes from the beginning and end of a string slice if present
 fn strip_quotes(s: &str) -> &str {
-    if s.len() >= 2 {
-        if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
-            return &s[1..s.len() - 1];
-        }
+    if s.len() >= 2
+        && ((s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')))
+    {
+        return &s[1..s.len() - 1];
     }
     s
 }
@@ -337,9 +337,9 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_cmd::prelude::*;
     use assert_cmd::Command;
     use predicates::prelude::*;
-    use assert_cmd::prelude::*;
     use std::io::{Read, Write};
     use std::process::{Command as StdCommand, Stdio};
 
