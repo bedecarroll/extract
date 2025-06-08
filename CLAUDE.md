@@ -30,11 +30,20 @@ The port detection uses `MAX_INT_IN_V6` constant (9999) to differentiate between
 
 ### Build and Test
 ```bash
+# Format the code
+cargo fmt --all
+
+# Lint using clippy at the pedantic level and fail on warnings
+cargo clippy -- -D warnings -W clippy::pedantic
+
 # Build release binary
 cargo build --release
 
 # Run tests (includes integration tests with assert_cmd)
 cargo test
+
+# Run Criterion benchmarks
+cargo bench --bench performance
 
 # Run with debug logging
 cargo run -- --debug
@@ -60,4 +69,4 @@ Uses `assert_cmd` for integration testing with real CLI invocation. Tests cover:
 - Complex text scenarios with mixed patterns (including comprehensive user complaint blob)
 - CLI flags and version commands
 
-Test patterns focus on all extraction functions and include realistic text blob scenarios.
+Test patterns focus on all extraction functions and include realistic text blob scenarios. Criterion benchmarks live in `benches/performance.rs` to monitor performance regressions.

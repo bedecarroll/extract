@@ -226,6 +226,15 @@ extract < data.txt | sort | uniq -c | sort -nr
 extract < incident_report.txt > network_assets.txt
 ```
 
+## Development Guidelines
+
+To maintain a clean code base and catch problems early:
+
+1. Format the code with `cargo fmt --all`.
+2. Lint with `cargo clippy -- -D warnings -W clippy::pedantic`.
+3. Run the test suite using `cargo test`.
+4. Check benchmarks via `cargo bench --bench performance`.
+
 ## Testing
 
 Run the comprehensive test suite:

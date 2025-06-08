@@ -1,3 +1,5 @@
+#![deny(clippy::pedantic)]
+
 use atty::Stream;
 use clap::{Parser, Subcommand};
 use edit::edit;
@@ -53,18 +55,19 @@ struct AppConfig {
     custom_regexes: Vec<CustomRule>,
 }
 
-/// Load configuration from $XDG_CONFIG_HOME/extract/config.toml or $HOME/.config/extract/config.toml
+/// Load configuration from `$XDG_CONFIG_HOME/extract/config.toml` or
+/// `$HOME/.config/extract/config.toml`
 fn load_config() -> AppConfig {
     let mut config = AppConfig::default();
 
     let base = std::env::var("XDG_CONFIG_HOME")
-        .or_else(|_| std::env::var("HOME").map(|h| format!("{}/.config", h)));
+        .or_else(|_| std::env::var("HOME").map(|h| format!("{h}/.config")));
 
     if let Ok(dir) = base {
         let path = Path::new(&dir).join("extract").join("config.toml");
         if let Ok(contents) = std::fs::read_to_string(&path) {
             if let Ok(value) = contents.parse::<Value>() {
-                if let Some(d) = value.get("debug").and_then(|v| v.as_bool()) {
+                if let Some(d) = value.get("debug").and_then(toml::Value::as_bool) {
                     config.debug = d;
                 }
                 if let Some(map) = value.get("custom_regexes").and_then(|v| v.as_table()) {
@@ -75,7 +78,7 @@ fn load_config() -> AppConfig {
                                     regex: re,
                                     replace: repl.to_string(),
                                 }),
-                                Err(e) => eprintln!("Invalid custom regex '{}': {}", pattern, e),
+                                Err(e) => eprintln!("Invalid custom regex '{pattern}': {e}"),
                             }
                         }
                     }
@@ -356,22 +359,19 @@ fn main() {
 
     if atty::is(Stream::Stdin) {
         let editor_env = std::env::var("EDITOR").unwrap_or_default();
-        debug!(
-            "Opening $EDITOR ({:?}) for input. Save and quit to continue.",
-            editor_env
-        );
+        debug!("Opening $EDITOR ({editor_env:?}) for input. Save and quit to continue.");
         match edit("") {
             Ok(text) => input = text,
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
-                    warn!("Editor not found. EDITOR={:?}", editor_env);
+                    warn!("Editor not found. EDITOR={editor_env:?}");
                     eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
                     if let Err(err) = io::stdin().read_to_string(&mut input) {
-                        eprintln!("Error reading input: {}", err);
+                        eprintln!("Error reading input: {err}");
                         return;
                     }
                 } else {
-                    eprintln!("Error launching editor: {}", e);
+                    eprintln!("Error launching editor: {e}");
                     return;
                 }
             }
@@ -379,7 +379,7 @@ fn main() {
     } else {
         let stdin = io::stdin();
         if let Err(e) = stdin.lock().read_to_string(&mut input) {
-            eprintln!("Error reading input: {}", e);
+            eprintln!("Error reading input: {e}");
             return;
         }
     }
@@ -391,31 +391,31 @@ fn main() {
 
     let mut all_tokens = Vec::new();
     for line in lines {
-        debug!("Processing line: {}", line);
+        debug!("Processing line: {line}");
 
         let ips = ip_finder(&line);
-        debug!("Found IPs: {:?}", ips);
+        debug!("Found IPs: {ips:?}");
         all_tokens.extend(ips);
 
         let cidrs = cidr_finder(&line);
-        debug!("Found CIDRs: {:?}", cidrs);
+        debug!("Found CIDRs: {cidrs:?}");
         all_tokens.extend(cidrs);
 
         let macs = mac_finder(&line);
-        debug!("Found MACs: {:?}", macs);
+        debug!("Found MACs: {macs:?}");
         all_tokens.extend(macs);
 
         let ranges = range_finder(&line);
-        debug!("Found ranges: {:?}", ranges);
+        debug!("Found ranges: {ranges:?}");
         all_tokens.extend(ranges);
 
         let custom = custom_regex_matches(&line, &config.custom_regexes);
-        debug!("Found custom: {:?}", custom);
+        debug!("Found custom: {custom:?}");
         all_tokens.extend(custom);
     }
 
     for token in all_tokens {
-        println!("{}", token);
+        println!("{token}");
     }
 }
 
