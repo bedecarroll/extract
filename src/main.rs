@@ -5,11 +5,13 @@ use clap::{Parser, Subcommand};
 use edit::edit;
 use log::{debug, warn, LevelFilter};
 use regex::Regex;
-use std::io::{self, ErrorKind, Read};
+use std::io::Write;
+use std::io::{self, Read};
 use std::net::IpAddr;
 use std::path::Path;
 use std::sync::LazyLock;
 use toml::Value;
+use which::which;
 
 /// Maximum integer value that can appear in an IPv6 address component.
 /// Values above this in the last position are assumed to be port numbers.
@@ -74,6 +76,9 @@ struct CustomRule {
 
 fn print_config(cfg: &AppConfig) {
     println!("debug = {}", cfg.debug);
+    if let Some(ref ed) = cfg.editor {
+        println!("editor = \"{ed}\"");
+    }
     if !cfg.custom_regexes.is_empty() {
         println!("\n[custom_regexes]");
         for rule in &cfg.custom_regexes {
@@ -85,6 +90,7 @@ fn print_config(cfg: &AppConfig) {
 #[derive(Default)]
 struct AppConfig {
     debug: bool,
+    editor: Option<String>,
     custom_regexes: Vec<CustomRule>,
 }
 
@@ -133,6 +139,9 @@ fn merge_config_contents(contents: &str, config: &mut AppConfig) {
     if let Ok(value) = contents.parse::<Value>() {
         if let Some(d) = value.get("debug").and_then(toml::Value::as_bool) {
             config.debug = d;
+        }
+        if let Some(ed) = value.get("editor").and_then(toml::Value::as_str) {
+            config.editor = Some(ed.to_string());
         }
         if let Some(map) = value.get("custom_regexes").and_then(|v| v.as_table()) {
             for (pattern, replacement) in map {
@@ -458,6 +467,7 @@ fn range_finder(s: &str) -> Vec<String> {
     elements
 }
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     let cli = Cli::parse();
     let config = load_config();
@@ -506,12 +516,18 @@ fn main() {
     let mut input = String::new();
 
     if atty::is(Stream::Stdin) {
-        let editor_env = std::env::var("EDITOR").unwrap_or_default();
-        debug!("Opening $EDITOR ({editor_env:?}) for input. Save and quit to continue.");
-        match edit("") {
-            Ok(text) => input = text,
-            Err(e) => {
-                if e.kind() == ErrorKind::NotFound {
+        let configured = config.editor.as_deref();
+        if let Some(ed) = configured {
+            if ed.is_empty() || ed.eq_ignore_ascii_case("none") {
+                eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
+                if let Err(err) = io::stdin().read_to_string(&mut input) {
+                    eprintln!("Error reading input: {err}");
+                    return;
+                }
+            } else {
+                std::env::set_var("EDITOR", ed);
+                let editor_env = ed.to_string();
+                if which(&editor_env).is_err() {
                     warn!("Editor not found. EDITOR={editor_env:?}");
                     eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
                     if let Err(err) = io::stdin().read_to_string(&mut input) {
@@ -519,8 +535,35 @@ fn main() {
                         return;
                     }
                 } else {
-                    eprintln!("Error launching editor: {e}");
+                    debug!("Opening editor ({editor_env:?}) for input. Save and quit to continue.");
+                    match edit("") {
+                        Ok(text) => input = text,
+                        Err(e) => {
+                            eprintln!("Error launching editor: {e}");
+                            return;
+                        }
+                    }
+                }
+            }
+        } else {
+            let editor_env = std::env::var("EDITOR").unwrap_or_default();
+            if editor_env.is_empty() || which(&editor_env).is_err() {
+                if !editor_env.is_empty() {
+                    warn!("Editor not found. EDITOR={editor_env:?}");
+                }
+                eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
+                if let Err(err) = io::stdin().read_to_string(&mut input) {
+                    eprintln!("Error reading input: {err}");
                     return;
+                }
+            } else {
+                debug!("Opening $EDITOR ({editor_env:?}) for input. Save and quit to continue.");
+                match edit("") {
+                    Ok(text) => input = text,
+                    Err(e) => {
+                        eprintln!("Error launching editor: {e}");
+                        return;
+                    }
                 }
             }
         }
@@ -562,8 +605,14 @@ fn main() {
         all_tokens.extend(custom);
     }
 
+    let mut out = io::stdout();
     for token in all_tokens {
-        println!("{token}");
+        if let Err(e) = writeln!(out, "{token}") {
+            if e.kind() != io::ErrorKind::BrokenPipe {
+                eprintln!("Error writing output: {e}");
+            }
+            return;
+        }
     }
 }
 
@@ -1647,6 +1696,22 @@ Email: john.doe@company.com"#;
         let config = load_config();
         assert_eq!(config.debug, true);
         assert_eq!(config.custom_regexes.len(), 0);
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_load_config_with_editor() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join(format!("extract_test_editor_{}", std::process::id()));
+        let cfg_dir = tmp.join("extract");
+        fs::create_dir_all(&cfg_dir).unwrap();
+        fs::write(cfg_dir.join("config.toml"), "editor = \"nano\"").unwrap();
+
+        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        let config = load_config();
+        assert_eq!(config.editor.as_deref(), Some("nano"));
 
         fs::remove_dir_all(&tmp).ok();
     }

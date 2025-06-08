@@ -85,7 +85,7 @@ Output:
 
 ### Interactive Mode
 
-Run without arguments to launch your `$EDITOR` for interactive input. If no editor is found, you'll be prompted to type the text directly:
+Run without arguments to launch your `$EDITOR` for interactive input. If no editor is found – including when a configured editor is missing – you'll be prompted to type the text directly:
 
 ```bash
 extract
@@ -104,10 +104,13 @@ Enter your text in the editor and save. If using the stdin fallback, end the inp
 
 ### Configuration
 
-`extract` also reads an optional configuration file from `$XDG_CONFIG_HOME/extract/config.toml`. On Windows this defaults to `%APPDATA%\extract\config.toml`, and on Unix-like systems falls back to `~/.config/extract/config.toml` when `XDG_CONFIG_HOME` is not set. Additional files in a sibling `conf.d` directory are loaded in alphabetical order. These can override settings or extend the `custom_regexes` list. The configuration supports a `debug` flag and a `custom_regexes` table mapping regex patterns to replacement strings. Replacements can reference capture groups using `$1`, `$2`, and so on:
+`extract` also reads an optional configuration file from `$XDG_CONFIG_HOME/extract/config.toml`. On Windows this defaults to `%APPDATA%\extract\config.toml`, and on Unix-like systems falls back to `~/.config/extract/config.toml` when `XDG_CONFIG_HOME` is not set. Additional files in a sibling `conf.d` directory are loaded in alphabetical order. These can override settings or extend the `custom_regexes` list. The configuration supports a `debug` flag, an optional `editor` string, and a `custom_regexes` table mapping regex patterns to replacement strings. Replacements can reference capture groups using `$1`, `$2`, and so on. If the configured editor cannot be found, the program falls back to reading from stdin:
 
 ```toml
 debug = false
+# editor to launch for interactive mode (empty string disables the editor)
+editor = "nano"
+# editor = ""
 
 [custom_regexes]
 # Translate host-based labels into IPs using capture groups

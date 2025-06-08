@@ -353,6 +353,7 @@ dependencies = [
  "predicates",
  "regex",
  "toml",
+ "which",
 ]
 
 [[package]]
