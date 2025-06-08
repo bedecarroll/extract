@@ -91,7 +91,7 @@ Run without arguments to launch your `$EDITOR` for interactive input. If no edit
 extract
 ```
 
-Enter your text in the editor and save. If using the stdin fallback, end the input with Ctrl-D when finished.
+Enter your text in the editor and save. If using the stdin fallback, end the input with Ctrl-D or EOF on a new line when finished.
 
 ### Command Options
 

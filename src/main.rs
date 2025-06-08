@@ -1,7 +1,7 @@
 use atty::Stream;
 use clap::{Parser, Subcommand};
 use edit::edit;
-use log::{debug, LevelFilter};
+use log::{debug, warn, LevelFilter};
 use regex::Regex;
 use std::io::{self, ErrorKind, Read};
 use std::net::IpAddr;
@@ -355,12 +355,17 @@ fn main() {
     let mut input = String::new();
 
     if atty::is(Stream::Stdin) {
-        eprintln!("Opening $EDITOR for input. Save and quit to continue.");
+        let editor_env = std::env::var("EDITOR").unwrap_or_default();
+        debug!(
+            "Opening $EDITOR ({:?}) for input. Save and quit to continue.",
+            editor_env
+        );
         match edit("") {
             Ok(text) => input = text,
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
-                    eprintln!("No editor found. Falling back to stdin. End input with Ctrl-D.");
+                    warn!("Editor not found. EDITOR={:?}", editor_env);
+                    eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
                     if let Err(err) = io::stdin().read_to_string(&mut input) {
                         eprintln!("Error reading input: {}", err);
                         return;
