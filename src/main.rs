@@ -21,6 +21,14 @@ static DELIMITERS: LazyLock<Regex> =
 static MAYBE_PORT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r":\d{1,6}$").expect("Invalid port regex"));
 
+/// Regex pattern for detecting IP ranges expressed with arrow notation
+static ARROW_RANGE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?P<start>\[?[0-9A-Fa-f:.]+\]?(?::\d{1,6})?)-*>(?P<end>\[?[0-9A-Fa-f:.]+\]?(?::\d{1,6})?)",
+    )
+    .expect("Invalid arrow range regex")
+});
+
 #[derive(Subcommand)]
 enum Commands {
     /// Print version and quit.
@@ -307,6 +315,31 @@ fn mac_finder(s: &str) -> Vec<String> {
 /// Extracts IP ranges from text (IP-IP format)
 fn range_finder(s: &str) -> Vec<String> {
     let mut elements = Vec::new();
+
+    // First handle arrow-based ranges like "1.1.1.1->2.2.2.2" or "1.1.1.1>2.2.2.2"
+    for caps in ARROW_RANGE.captures_iter(s) {
+        let mut start = strip_quotes(caps.name("start").unwrap().as_str()).to_string();
+        if let Some(without_port) = remove_port_if_present(&start) {
+            start = without_port;
+        }
+        let start_processed = strip_brackets(&start);
+
+        let mut end = strip_quotes(caps.name("end").unwrap().as_str()).to_string();
+        if let Some(without_port) = remove_port_if_present(&end) {
+            end = without_port;
+        }
+        let end_processed = strip_brackets(&end);
+
+        if is_an_ip(start_processed) && is_an_ip(end_processed) {
+            let start_is_ipv4 = start_processed.contains('.');
+            let end_is_ipv4 = end_processed.contains('.');
+
+            if start_is_ipv4 == end_is_ipv4 {
+                let matched = caps.get(0).unwrap().as_str();
+                elements.push(strip_quotes(matched).to_string());
+            }
+        }
+    }
 
     for chunk in DELIMITERS.split(s) {
         if chunk.is_empty() || !chunk.contains('-') {
@@ -973,6 +1006,28 @@ mod tests {
         let input = "192.168.1.1:8080-192.168.1.10:8080 should not extract with ports";
         let result = range_finder(&input);
         assert_eq!(result, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_range_finder_arrow_notation() {
+        let input = concat!(
+            "1.1.1.1>2.2.2.2 ",
+            "1.1.1.1->2.2.2.2 ",
+            "1.1.1.1-->2.2.2.2 ",
+            "[2001:db8::1]->[2001:db8::2] ",
+            "[2001:db8::1]:8080->[2001:db8::2]:9090",
+        );
+        let result = range_finder(&input);
+        assert_eq!(
+            result,
+            vec![
+                "1.1.1.1>2.2.2.2",
+                "1.1.1.1->2.2.2.2",
+                "1.1.1.1-->2.2.2.2",
+                "[2001:db8::1]->[2001:db8::2]",
+                "[2001:db8::1]:8080->[2001:db8::2]:9090",
+            ]
+        );
     }
 
     #[test]
