@@ -1,11 +1,13 @@
 use atty::Stream;
 use clap::{Parser, Subcommand};
-use edit;
+use edit::edit;
 use log::{debug, LevelFilter};
 use regex::Regex;
 use std::io::{self, ErrorKind, Read};
 use std::net::IpAddr;
+use std::path::Path;
 use std::sync::LazyLock;
+use toml::Value;
 
 /// Maximum integer value that can appear in an IPv6 address component.
 /// Values above this in the last position are assumed to be port numbers.
@@ -38,6 +40,64 @@ struct Cli {
 
     #[command(subcommand)]
     command: Option<Commands>,
+}
+
+struct CustomRule {
+    regex: Regex,
+    replace: String,
+}
+
+#[derive(Default)]
+struct AppConfig {
+    debug: bool,
+    custom_regexes: Vec<CustomRule>,
+}
+
+/// Load configuration from $XDG_CONFIG_HOME/extract/config.toml or $HOME/.config/extract/config.toml
+fn load_config() -> AppConfig {
+    let mut config = AppConfig::default();
+
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .or_else(|_| std::env::var("HOME").map(|h| format!("{}/.config", h)));
+
+    if let Ok(dir) = base {
+        let path = Path::new(&dir).join("extract").join("config.toml");
+        if let Ok(contents) = std::fs::read_to_string(&path) {
+            if let Ok(value) = contents.parse::<Value>() {
+                if let Some(d) = value.get("debug").and_then(|v| v.as_bool()) {
+                    config.debug = d;
+                }
+                if let Some(map) = value.get("custom_regexes").and_then(|v| v.as_table()) {
+                    for (pattern, replacement) in map {
+                        if let Some(repl) = replacement.as_str() {
+                            match Regex::new(pattern) {
+                                Ok(re) => config.custom_regexes.push(CustomRule {
+                                    regex: re,
+                                    replace: repl.to_string(),
+                                }),
+                                Err(e) => eprintln!("Invalid custom regex '{}': {}", pattern, e),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    config
+}
+
+/// Apply custom regex patterns from the configuration to a text line
+fn custom_regex_matches(s: &str, patterns: &[CustomRule]) -> Vec<String> {
+    let mut elements = Vec::new();
+    for rule in patterns {
+        for caps in rule.regex.captures_iter(s) {
+            let mut out = String::new();
+            caps.expand(&rule.replace, &mut out);
+            elements.push(out);
+        }
+    }
+    elements
 }
 
 /// Checks if a string slice represents a valid IP address (IPv4 or IPv6)
@@ -276,16 +336,16 @@ fn range_finder(s: &str) -> Vec<String> {
 
 fn main() {
     let cli = Cli::parse();
+    let config = load_config();
+    let debug_enabled = cli.debug || config.debug;
 
-    if cli.debug {
-        env_logger::Builder::from_default_env()
-            .filter_level(LevelFilter::Debug)
-            .init();
-    } else {
-        env_logger::Builder::from_default_env()
-            .filter_level(LevelFilter::Info)
-            .init();
-    }
+    env_logger::Builder::from_default_env()
+        .filter_level(if debug_enabled {
+            LevelFilter::Debug
+        } else {
+            LevelFilter::Info
+        })
+        .init();
 
     if let Some(Commands::Version) = cli.command {
         println!("{}", env!("CARGO_PKG_VERSION"));
@@ -296,7 +356,7 @@ fn main() {
 
     if atty::is(Stream::Stdin) {
         eprintln!("Opening $EDITOR for input. Save and quit to continue.");
-        match edit::edit("") {
+        match edit("") {
             Ok(text) => input = text,
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
@@ -343,6 +403,10 @@ fn main() {
         let ranges = range_finder(&line);
         debug!("Found ranges: {:?}", ranges);
         all_tokens.extend(ranges);
+
+        let custom = custom_regex_matches(&line, &config.custom_regexes);
+        debug!("Found custom: {:?}", custom);
+        all_tokens.extend(custom);
     }
 
     for token in all_tokens {
@@ -361,6 +425,79 @@ mod tests {
 
     const EXAMPLE_V6_1: &str = "2001:db8::1";
     const EXAMPLE_V6_2: &str = "fdbd:db8::2";
+
+    // Tests for utility functions
+    #[test]
+    fn test_strip_quotes_basic() {
+        assert_eq!(strip_quotes("\"hello\""), "hello");
+        assert_eq!(strip_quotes("'world'"), "world");
+        assert_eq!(strip_quotes("\"192.168.1.1\""), "192.168.1.1");
+        assert_eq!(strip_quotes("'192.168.1.1'"), "192.168.1.1");
+    }
+
+    #[test]
+    fn test_strip_quotes_edge_cases() {
+        assert_eq!(strip_quotes("hello"), "hello");
+        assert_eq!(strip_quotes(""), "");
+        assert_eq!(strip_quotes("h"), "h");
+        assert_eq!(strip_quotes("\""), "\"");
+        assert_eq!(strip_quotes("'"), "'");
+        assert_eq!(strip_quotes("\"\""), "");
+        assert_eq!(strip_quotes("''"), "");
+        assert_eq!(strip_quotes("\"test'"), "\"test'");
+        assert_eq!(strip_quotes("'test\""), "'test\"");
+        assert_eq!(strip_quotes("\"'test'\""), "'test'");
+        assert_eq!(strip_quotes("'\"test\"'"), "\"test\"");
+    }
+
+    #[test]
+    fn test_strip_brackets_basic() {
+        assert_eq!(strip_brackets("[hello]"), "hello");
+        assert_eq!(strip_brackets("[192.168.1.1]"), "192.168.1.1");
+        assert_eq!(strip_brackets("[2001:db8::1]"), "2001:db8::1");
+    }
+
+    #[test]
+    fn test_strip_brackets_edge_cases() {
+        assert_eq!(strip_brackets("hello"), "hello");
+        assert_eq!(strip_brackets(""), "");
+        assert_eq!(strip_brackets("h"), "h");
+        assert_eq!(strip_brackets("["), "[");
+        assert_eq!(strip_brackets("]"), "]");
+        assert_eq!(strip_brackets("[]"), "");
+        assert_eq!(strip_brackets("[test"), "[test");
+        assert_eq!(strip_brackets("test]"), "test]");
+        assert_eq!(strip_brackets("[[test]]"), "[test]");
+    }
+
+    #[test]
+    fn test_remove_port_if_present_ipv4() {
+        assert_eq!(remove_port_if_present("192.168.1.1:8080"), Some("192.168.1.1".to_string()));
+        assert_eq!(remove_port_if_present("192.168.1.1:443"), Some("192.168.1.1".to_string()));
+        assert_eq!(remove_port_if_present("10.0.0.1:65535"), Some("10.0.0.1".to_string()));
+        assert_eq!(remove_port_if_present("192.168.1.1"), None);
+        assert_eq!(remove_port_if_present("not.an.ip:8080"), Some("not.an.ip".to_string()));
+    }
+
+    #[test]
+    fn test_remove_port_if_present_ipv6() {
+        assert_eq!(remove_port_if_present("[2001:db8::1]:8080"), Some("2001:db8::1".to_string()));
+        assert_eq!(remove_port_if_present("[::1]:443"), Some("::1".to_string()));
+        assert_eq!(remove_port_if_present("2001:db8::1:22222"), Some("2001:db8::1".to_string()));
+        assert_eq!(remove_port_if_present("2001:db8::1"), None);
+        assert_eq!(remove_port_if_present("2001:db8::1:8080"), None); // 8080 <= MAX_INT_IN_V6
+    }
+
+    #[test]
+    fn test_remove_port_if_present_edge_cases() {
+        assert_eq!(remove_port_if_present(""), None);
+        assert_eq!(remove_port_if_present("192.168.1.1:"), None); // Doesn't match MAYBE_PORT
+        assert_eq!(remove_port_if_present("192.168.1.1:abc"), None); // Doesn't match MAYBE_PORT (non-numeric)
+        assert_eq!(remove_port_if_present("[]:8080"), Some("".to_string())); // Bracket logic extracts empty string
+        assert_eq!(remove_port_if_present("test:123"), None); // No dots or brackets, doesn't meet IPv6 high port criteria
+        assert_eq!(remove_port_if_present("a:b:c:d:e:f:10000"), Some("a:b:c:d:e:f".to_string())); // > MAX_INT_IN_V6
+        assert_eq!(remove_port_if_present("a:b:c:d:e:f:8888"), None); // <= MAX_INT_IN_V6
+    }
 
     #[test]
     fn test_version_subcommand() {
@@ -655,6 +792,13 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_cidr_finder_quoted() {
+        let input = "\"192.168.1.0/24\" '10.0.0.0/8' \"2001:db8::/32\"";
+        let result = cidr_finder(&input);
+        assert_eq!(result, vec!["192.168.1.0/24", "10.0.0.0/8", "2001:db8::/32"]);
+    }
+
     // Tests for MAC address extraction
     #[test]
     fn test_mac_finder_colon_format() {
@@ -715,6 +859,20 @@ mod tests {
         assert_eq!(result, Vec::<String>::new());
     }
 
+    #[test]
+    fn test_mac_finder_quoted() {
+        let input = "\"00:11:22:33:44:55\" '00-11-22-33-44-66' \"0011.2233.4477\"";
+        let result = mac_finder(&input);
+        assert_eq!(result, vec!["00:11:22:33:44:55", "00-11-22-33-44-66", "0011.2233.4477"]);
+    }
+
+    #[test]
+    fn test_mac_finder_case_sensitivity() {
+        let input = "00:aa:BB:cc:DD:ee AA:BB:CC:DD:EE:FF aabb.ccdd.eeff";
+        let result = mac_finder(&input);
+        assert_eq!(result, vec!["00:aa:BB:cc:DD:ee", "AA:BB:CC:DD:EE:FF", "aabb.ccdd.eeff"]);
+    }
+
     // Tests for IP range extraction
     #[test]
     fn test_range_finder_ipv4() {
@@ -752,6 +910,27 @@ mod tests {
         let input = "Scan range 192.168.1.1-192.168.1.254 for devices";
         let result = range_finder(&input);
         assert_eq!(result, vec!["192.168.1.1-192.168.1.254"]);
+    }
+
+    #[test]
+    fn test_range_finder_quoted() {
+        let input = "\"192.168.1.1-192.168.1.10\" '10.0.0.1-10.0.0.5' \"2001:db8::1-2001:db8::10\"";
+        let result = range_finder(&input);
+        assert_eq!(result, vec!["192.168.1.1-192.168.1.10", "10.0.0.1-10.0.0.5", "2001:db8::1-2001:db8::10"]);
+    }
+
+    #[test]
+    fn test_range_finder_mixed_ip_types() {
+        let input = "192.168.1.1-2001:db8::1 mixed types should fail";
+        let result = range_finder(&input);
+        assert_eq!(result, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_range_finder_with_ports() {
+        let input = "192.168.1.1:8080-192.168.1.10:8080 should not extract with ports";
+        let result = range_finder(&input);
+        assert_eq!(result, Vec::<String>::new());
     }
 
     #[test]
@@ -1004,5 +1183,339 @@ Email: john.doe@company.com"#;
 
         // Note: http://[::1]:8080/api doesn't extract ::1 due to http:// prefix parsing
         // which is expected behavior for URL contexts
+    }
+
+    #[test]
+    fn test_custom_regex_matches_simple() {
+        let rules = vec![CustomRule {
+            regex: Regex::new(r"host-(\d{3})-(\d{3})-(\d{3})").unwrap(),
+            replace: "10.$1.$2.$3".to_string(),
+        }];
+
+        let result = custom_regex_matches("connect to host-001-002-003", &rules);
+        assert_eq!(result, vec!["10.001.002.003"]);
+    }
+
+    #[test]
+    fn test_load_config_and_apply_custom_regex() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join(format!("extract_test_{}", std::process::id()));
+        let cfg_dir = tmp.join("extract");
+        fs::create_dir_all(&cfg_dir).unwrap();
+        fs::write(
+            cfg_dir.join("config.toml"),
+            "debug = false\n[custom_regexes]\n\"host-(\\\\d{3})-(\\\\d{3})-(\\\\d{3})\" = \"10.$1.$2.$3\"\n",
+        )
+        .unwrap();
+
+        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        let config = load_config();
+        assert_eq!(config.custom_regexes.len(), 1);
+
+        let out = custom_regex_matches("host-123-456-789", &config.custom_regexes);
+        assert_eq!(out, vec!["10.123.456.789"]);
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_custom_regex_matches_ocid_capture_all() {
+        let rules = vec![CustomRule {
+            regex: Regex::new(r"(ocid1\S+)").unwrap(),
+            replace: "$0".to_string(),
+        }];
+
+        let input = "resource ocid1.instance.oc1.phx.123456";
+        let result = custom_regex_matches(input, &rules);
+        assert_eq!(result, vec!["ocid1.instance.oc1.phx.123456"]);
+    }
+
+    #[test]
+    fn test_custom_regex_matches_multiple_rules() {
+        let rules = vec![
+            CustomRule {
+                regex: Regex::new(r"host-(\d{3})").unwrap(),
+                replace: "10.0.0.$1".to_string(),
+            },
+            CustomRule {
+                regex: Regex::new(r"server-(\d{2})").unwrap(),
+                replace: "192.168.1.$1".to_string(),
+            },
+        ];
+
+        let input = "connect to host-123 and server-45";
+        let result = custom_regex_matches(input, &rules);
+        assert_eq!(result, vec!["10.0.0.123", "192.168.1.45"]);
+    }
+
+    #[test]
+    fn test_custom_regex_matches_multiple_matches_same_rule() {
+        let rules = vec![CustomRule {
+            regex: Regex::new(r"ip-(\d+\.\d+\.\d+\.\d+)").unwrap(),
+            replace: "$1".to_string(),
+        }];
+
+        let input = "servers ip-192.168.1.1 and ip-10.0.0.1 are online";
+        let result = custom_regex_matches(input, &rules);
+        assert_eq!(result, vec!["192.168.1.1", "10.0.0.1"]);
+    }
+
+    #[test]
+    fn test_custom_regex_matches_no_captures() {
+        let rules = vec![CustomRule {
+            regex: Regex::new(r"ERROR").unwrap(),
+            replace: "ALERT".to_string(),
+        }];
+
+        let input = "This is an ERROR message with another ERROR";
+        let result = custom_regex_matches(input, &rules);
+        assert_eq!(result, vec!["ALERT", "ALERT"]);
+    }
+
+    #[test]
+    fn test_custom_regex_matches_empty_rules() {
+        let rules = vec![];
+        let input = "host-123 server-45";
+        let result = custom_regex_matches(input, &rules);
+        assert_eq!(result, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_custom_regex_matches_no_matches() {
+        let rules = vec![CustomRule {
+            regex: Regex::new(r"xyz-(\d+)").unwrap(),
+            replace: "found-$1".to_string(),
+        }];
+
+        let input = "host-123 server-45";
+        let result = custom_regex_matches(input, &rules);
+        assert_eq!(result, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_custom_regex_matches_complex_replacement() {
+        let rules = vec![CustomRule {
+            regex: Regex::new(r"user:(\w+),role:(\w+),dept:(\w+)").unwrap(),
+            replace: "$1@$3.$2".to_string(),
+        }];
+
+        let input = "access user:john,role:admin,dept:it and user:jane,role:user,dept:hr";
+        let result = custom_regex_matches(input, &rules);
+        assert_eq!(result, vec!["john@it.admin", "jane@hr.user"]);
+    }
+
+    #[test]
+    fn test_load_config_missing_file() {
+        let tmp = std::env::temp_dir().join(format!("extract_test_missing_{}", std::process::id()));
+        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        
+        let config = load_config();
+        assert_eq!(config.debug, false);
+        assert_eq!(config.custom_regexes.len(), 0);
+    }
+
+    #[test]
+    fn test_load_config_invalid_toml() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join(format!("extract_test_invalid_{}", std::process::id()));
+        let cfg_dir = tmp.join("extract");
+        fs::create_dir_all(&cfg_dir).unwrap();
+        fs::write(cfg_dir.join("config.toml"), "invalid toml content [[[").unwrap();
+
+        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        let config = load_config();
+        assert_eq!(config.debug, false);
+        assert_eq!(config.custom_regexes.len(), 0);
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_load_config_missing_debug_field() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join(format!("extract_test_no_debug_{}", std::process::id()));
+        let cfg_dir = tmp.join("extract");
+        fs::create_dir_all(&cfg_dir).unwrap();
+        fs::write(cfg_dir.join("config.toml"), "[custom_regexes]\n\"test\" = \"result\"").unwrap();
+
+        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        let config = load_config();
+        assert_eq!(config.debug, false);
+        assert_eq!(config.custom_regexes.len(), 1);
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_load_config_missing_custom_regexes() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join(format!("extract_test_no_regexes_{}", std::process::id()));
+        let cfg_dir = tmp.join("extract");
+        fs::create_dir_all(&cfg_dir).unwrap();
+        fs::write(cfg_dir.join("config.toml"), "debug = true").unwrap();
+
+        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        let config = load_config();
+        assert_eq!(config.debug, true);
+        assert_eq!(config.custom_regexes.len(), 0);
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_load_config_home_fallback() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join(format!("extract_test_home_{}", std::process::id()));
+        let cfg_dir = tmp.join(".config").join("extract");
+        fs::create_dir_all(&cfg_dir).unwrap();
+        fs::write(cfg_dir.join("config.toml"), "debug = true").unwrap();
+
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::set_var("HOME", &tmp);
+        let config = load_config();
+        assert_eq!(config.debug, true);
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_load_config_non_string_replacement() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join(format!("extract_test_non_string_{}", std::process::id()));
+        let cfg_dir = tmp.join("extract");
+        fs::create_dir_all(&cfg_dir).unwrap();
+        fs::write(
+            cfg_dir.join("config.toml"),
+            "debug = false\n[custom_regexes]\n\"test\" = 123\n\"valid\" = \"replacement\"",
+        ).unwrap();
+
+        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        let config = load_config();
+        assert_eq!(config.custom_regexes.len(), 1); // Only the valid one
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    // Additional edge case tests
+    #[test]
+    fn test_static_regex_compilation() {
+        // Test that our static regexes compile and work
+        assert!(DELIMITERS.is_match("hello,world"));
+        assert!(DELIMITERS.is_match("hello world"));
+        assert!(DELIMITERS.is_match("hello|world"));
+        assert!(!DELIMITERS.is_match("helloworld"));
+
+        assert!(MAYBE_PORT.is_match("test:8080"));
+        assert!(MAYBE_PORT.is_match("ip:443"));
+        assert!(!MAYBE_PORT.is_match("test:abc"));
+        assert!(!MAYBE_PORT.is_match("test8080"));
+    }
+
+    #[test] 
+    fn test_large_input_handling() {
+        // Test with a large input to ensure no memory issues
+        let large_ip_list: Vec<String> = (1..=1000)
+            .map(|i| format!("192.168.{}.{}", i / 256, i % 256))
+            .collect();
+        let input = large_ip_list.join(" ");
+        
+        let result = ip_finder(&input);
+        assert_eq!(result.len(), 1000);
+        assert!(result.contains(&"192.168.1.1".to_string()));
+        assert!(result.contains(&"192.168.3.232".to_string()));
+    }
+
+    #[test]
+    fn test_mixed_delimiters_complex() {
+        let input = "ip1:192.168.1.1,ip2:10.0.0.1|ip3:172.16.0.1\tip4:203.0.113.1\nip5:198.51.100.1";
+        let result = ip_finder(&input);
+        assert_eq!(result, vec!["192.168.1.1", "10.0.0.1", "172.16.0.1", "203.0.113.1", "198.51.100.1"]);
+    }
+
+    #[test]
+    fn test_malformed_input_resilience() {
+        // Test that malformed input doesn't crash the application
+        let inputs = vec![
+            "",
+            ";;;;;;;",
+            "192.168.1.999",
+            "gggg:hhhh:iiii:jjjj:kkkk:llll:mmmm:nnnn",
+            "00:11:22:33:44:55:66:77", // too many MAC segments
+            "192.168.1.0/999", // invalid CIDR
+            "192.168.1.1-not.an.ip",
+        ];
+
+        for input in inputs {
+            let ips = ip_finder(input);
+            let cidrs = cidr_finder(input);
+            let macs = mac_finder(input);
+            let ranges = range_finder(input);
+            
+            // Should not crash, results may be empty
+            assert!(ips.len() <= 10); // reasonable upper bound
+            assert!(cidrs.len() <= 10);
+            assert!(macs.len() <= 10); 
+            assert!(ranges.len() <= 10);
+        }
+    }
+
+    #[test]
+    fn test_integration_with_custom_regexes() {
+        // Test that custom regexes work together with standard extraction
+        let rules = vec![CustomRule {
+            regex: Regex::new(r"server-(\d+)").unwrap(),
+            replace: "10.0.0.$1".to_string(),
+        }];
+
+        let input = "connect to 192.168.1.1 and server-50 with MAC 00:11:22:33:44:55";
+        let ips = ip_finder(input);
+        let macs = mac_finder(input); 
+        let custom = custom_regex_matches(input, &rules);
+
+        assert_eq!(ips, vec!["192.168.1.1"]);
+        assert_eq!(macs, vec!["00:11:22:33:44:55"]);
+        assert_eq!(custom, vec!["10.0.0.50"]);
+    }
+
+    #[test]
+    fn test_custom_regex_preserves_ports() {
+        // Test that custom regexes can extract IP:PORT while built-in extractors remove ports
+        let rules = vec![CustomRule {
+            regex: Regex::new(r"(\d+\.\d+\.\d+\.\d+:\d+)").unwrap(),
+            replace: "$1".to_string(),
+        }];
+
+        let input = "server at 192.168.1.1:8080 and 10.0.0.1:443";
+        let ips = ip_finder(input);
+        let custom = custom_regex_matches(input, &rules);
+
+        // Built-in extractor removes ports (IPv4 case)
+        assert_eq!(ips, vec!["192.168.1.1", "10.0.0.1"]);
+        // Custom regex preserves ports
+        assert_eq!(custom, vec!["192.168.1.1:8080", "10.0.0.1:443"]);
+    }
+
+    #[test]
+    fn test_custom_regex_ipv6_brackets() {
+        // Test custom regex for IPv6 with ports
+        let rules = vec![CustomRule {
+            regex: Regex::new(r"\[([0-9a-fA-F:]+)\]:(\d+)").unwrap(),
+            replace: "$1:$2".to_string(),
+        }];
+
+        let input = "connect to [2001:db8::1]:8080 and [::1]:443";
+        let ips = ip_finder(input);
+        let custom = custom_regex_matches(input, &rules);
+
+        // Built-in extractor removes ports from bracketed IPv6
+        assert_eq!(ips, vec!["2001:db8::1", "::1"]);
+        // Custom regex creates custom format
+        assert_eq!(custom, vec!["2001:db8::1:8080", "::1:443"]);
     }
 }

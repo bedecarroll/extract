@@ -1,0 +1,16 @@
+# Example configuration for extract
+# Set debug logging level
+debug = false
+
+# Provide custom regex patterns. Each key is a regex and the value is the
+# replacement string using $1, $2, ... for capture groups.
+[custom_regexes]
+"host-(\\d{3})-(\\d{3})-(\\d{3})" = "10.$1.$2.$3"
+"(ocid1\S+)" = "$0"
+
+# Extract IP:PORT combinations (built-in extractors remove ports)
+"(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)" = "$1"
+
+# Extract IPv6 with ports in brackets
+"\\[([0-9a-fA-F:]+)\\]:(\\d+)" = "$1:$2"
+

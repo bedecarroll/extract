@@ -99,6 +99,43 @@ Enter your text in the editor and save. If using the stdin fallback, end the inp
 - `--version`: Show version information
 - `version`: Show version (subcommand)
 
+### Configuration
+
+`extract` also reads an optional configuration file from `$XDG_CONFIG_HOME/extract/config.toml` (or `~/.config/extract/config.toml` when `XDG_CONFIG_HOME` is not set). The file supports a `debug` flag and a `custom_regexes` table mapping regex patterns to replacement strings. Replacements can reference capture groups using `$1`, `$2`, and so on:
+
+```toml
+debug = false
+
+[custom_regexes]
+# Translate host-based labels into IPs using capture groups
+# "host-(\\d{3})-(\\d{3})-(\\d{3})" = "10.$1.$2.$3"
+
+# Capture the entire match using `$0`, useful for custom identifiers
+# like Oracle OCI IDs
+# "(ocid1\S+)" = "$0"
+
+# Extract IP:PORT combinations (built-in extractors remove ports)
+# "(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)" = "$1"
+
+# Extract IPv6 with ports in custom format
+# "\\[([0-9a-fA-F:]+)\\]:(\\d+)" = "$1:$2"
+```
+
+See `examples/config.toml` for a complete example.
+
+#### Execution Order
+
+Custom regexes are applied **after** the built-in extractors, which means:
+
+1. **Built-in extractors** run first and apply automatic port removal for IP addresses
+2. **Custom regexes** run on the original input text and can capture any patterns you define
+
+This allows you to use custom regexes to extract patterns that the built-in extractors might modify. For example:
+- Built-in: `192.168.1.1:8080` → extracts `192.168.1.1` 
+- Custom regex: `192.168.1.1:8080` → can extract `192.168.1.1:8080` if desired
+
+Both extractions will appear in the output, giving you flexibility to capture both cleaned IPs and full IP:PORT combinations.
+
 ## Examples
 
 ### Complex Network Text
