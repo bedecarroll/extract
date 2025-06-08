@@ -35,6 +35,21 @@ static ARROW_RANGE: LazyLock<Regex> = LazyLock::new(|| {
 enum Commands {
     /// Print version and quit.
     Version,
+    /// Configuration related commands.
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigCommands {
+    /// Print the loaded configuration.
+    Print,
+    /// List searched configuration paths.
+    Ls,
+    /// Generate a default configuration file.
+    Generate,
 }
 
 #[derive(Parser)]
@@ -57,41 +72,114 @@ struct CustomRule {
     replace: String,
 }
 
+fn print_config(cfg: &AppConfig) {
+    println!("debug = {}", cfg.debug);
+    if !cfg.custom_regexes.is_empty() {
+        println!("\n[custom_regexes]");
+        for rule in &cfg.custom_regexes {
+            println!("\"{}\" = \"{}\"", rule.regex.as_str(), rule.replace);
+        }
+    }
+}
+
 #[derive(Default)]
 struct AppConfig {
     debug: bool,
     custom_regexes: Vec<CustomRule>,
 }
 
-/// Load configuration from `$XDG_CONFIG_HOME/extract/config.toml` or
-/// `$HOME/.config/extract/config.toml`
-fn load_config() -> AppConfig {
-    let mut config = AppConfig::default();
+/// Return the ordered list of paths where configuration files are searched for.
+fn config_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
+        dirs.push(Path::new(&dir).join("extract"));
+    }
+    if let Ok(dir) = std::env::var("APPDATA") {
+        dirs.push(Path::new(&dir).join("extract"));
+    }
+    if let Ok(dir) = std::env::var("HOME") {
+        dirs.push(Path::new(&dir).join(".config").join("extract"));
+    }
+    dirs
+}
 
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .or_else(|_| std::env::var("HOME").map(|h| format!("{h}/.config")));
+fn config_paths() -> Vec<std::path::PathBuf> {
+    config_dirs()
+        .into_iter()
+        .map(|d| d.join("config.toml"))
+        .collect()
+}
 
-    if let Ok(dir) = base {
-        let path = Path::new(&dir).join("extract").join("config.toml");
-        if let Ok(contents) = std::fs::read_to_string(&path) {
-            if let Ok(value) = contents.parse::<Value>() {
-                if let Some(d) = value.get("debug").and_then(toml::Value::as_bool) {
-                    config.debug = d;
-                }
-                if let Some(map) = value.get("custom_regexes").and_then(|v| v.as_table()) {
-                    for (pattern, replacement) in map {
-                        if let Some(repl) = replacement.as_str() {
-                            match Regex::new(pattern) {
-                                Ok(re) => config.custom_regexes.push(CustomRule {
-                                    regex: re,
-                                    replace: repl.to_string(),
-                                }),
-                                Err(e) => eprintln!("Invalid custom regex '{pattern}': {e}"),
-                            }
-                        }
+/// Return the preferred configuration path for generating new configs.
+fn default_config_path() -> Option<std::path::PathBuf> {
+    config_paths().into_iter().next()
+}
+
+/// Generate a default configuration file at the preferred location.
+fn generate_default_config() -> std::io::Result<std::path::PathBuf> {
+    let path = default_config_path()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "No config path"))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, include_str!("../examples/config.toml"))?;
+    Ok(path)
+}
+
+/// Load configuration from `$XDG_CONFIG_HOME/extract/config.toml`,
+/// `%APPDATA%\extract\config.toml` on Windows, or
+/// `$HOME/.config/extract/config.toml` as a fallback.
+fn merge_config_contents(contents: &str, config: &mut AppConfig) {
+    if let Ok(value) = contents.parse::<Value>() {
+        if let Some(d) = value.get("debug").and_then(toml::Value::as_bool) {
+            config.debug = d;
+        }
+        if let Some(map) = value.get("custom_regexes").and_then(|v| v.as_table()) {
+            for (pattern, replacement) in map {
+                if let Some(repl) = replacement.as_str() {
+                    match Regex::new(pattern) {
+                        Ok(re) => config.custom_regexes.push(CustomRule {
+                            regex: re,
+                            replace: repl.to_string(),
+                        }),
+                        Err(e) => eprintln!("Invalid custom regex '{pattern}': {e}"),
                     }
                 }
             }
+        }
+    }
+}
+
+fn load_config() -> AppConfig {
+    use std::ffi::OsStr;
+
+    let mut config = AppConfig::default();
+
+    for dir in config_dirs() {
+        let mut found = false;
+
+        let path = dir.join("config.toml");
+        if let Ok(contents) = std::fs::read_to_string(&path) {
+            merge_config_contents(&contents, &mut config);
+            found = true;
+        }
+
+        let confd = dir.join("conf.d");
+        if let Ok(entries) = std::fs::read_dir(&confd) {
+            let mut files: Vec<_> = entries.filter_map(std::result::Result::ok).collect();
+            files.sort_by_key(std::fs::DirEntry::file_name);
+            for entry in files {
+                if entry.path().extension() == Some(OsStr::new("toml")) {
+                    if let Ok(contents) = std::fs::read_to_string(entry.path()) {
+                        merge_config_contents(&contents, &mut config);
+                        found = true;
+                    }
+                }
+            }
+        }
+
+        if found {
+            break;
         }
     }
 
@@ -383,9 +471,36 @@ fn main() {
         })
         .init();
 
-    if let Some(Commands::Version) = cli.command {
-        println!("{}", env!("CARGO_PKG_VERSION"));
-        return;
+    match cli.command {
+        Some(Commands::Version) => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            return;
+        }
+        Some(Commands::Config {
+            command: ConfigCommands::Print,
+        }) => {
+            print_config(&config);
+            return;
+        }
+        Some(Commands::Config {
+            command: ConfigCommands::Ls,
+        }) => {
+            for dir in config_dirs() {
+                println!("{}", dir.join("config.toml").display());
+                println!("{}", dir.join("conf.d").display());
+            }
+            return;
+        }
+        Some(Commands::Config {
+            command: ConfigCommands::Generate,
+        }) => {
+            match generate_default_config() {
+                Ok(p) => println!("generated {}", p.display()),
+                Err(e) => eprintln!("{e}"),
+            }
+            return;
+        }
+        _ => {}
     }
 
     let mut input = String::new();
@@ -599,6 +714,73 @@ mod tests {
             .assert()
             .success()
             .stdout("192.168.1.1\n10.0.0.0/8\n00:11:22:33:44:55\n172.16.1.1-172.16.1.10\n");
+    }
+
+    #[test]
+    fn test_config_ls_command() {
+        let mut cmd = Command::cargo_bin("extract").unwrap();
+        cmd.args(["config", "ls"]).assert().success().stdout(
+            predicate::str::contains("config.toml").and(predicate::str::contains("conf.d")),
+        );
+    }
+
+    #[test]
+    fn test_config_generate_and_print() {
+        use std::fs;
+
+        std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir());
+        let path = default_config_path().unwrap();
+        let _ = fs::remove_file(&path);
+
+        let mut cmd = Command::cargo_bin("extract").unwrap();
+        cmd.args(["config", "generate"]).assert().success();
+
+        assert!(path.exists());
+
+        let mut cmd = Command::cargo_bin("extract").unwrap();
+        cmd.args(["config", "print"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("debug = false"));
+
+        fs::remove_file(path).ok();
+        std::env::remove_var("XDG_CONFIG_HOME");
+    }
+
+    #[test]
+    fn test_config_print_without_any_config() {
+        let mut cmd = Command::cargo_bin("extract").unwrap();
+        cmd.env_remove("XDG_CONFIG_HOME")
+            .env_remove("APPDATA")
+            .env_remove("HOME")
+            .args(["config", "print"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("debug = false"));
+    }
+
+    #[test]
+    fn test_config_ls_without_any_config() {
+        let mut cmd = Command::cargo_bin("extract").unwrap();
+        cmd.env_remove("XDG_CONFIG_HOME")
+            .env_remove("APPDATA")
+            .env_remove("HOME")
+            .args(["config", "ls"])
+            .assert()
+            .success()
+            .stdout(predicate::str::is_empty());
+    }
+
+    #[test]
+    fn test_config_generate_without_any_config() {
+        let mut cmd = Command::cargo_bin("extract").unwrap();
+        cmd.env_remove("XDG_CONFIG_HOME")
+            .env_remove("APPDATA")
+            .env_remove("HOME")
+            .args(["config", "generate"])
+            .assert()
+            .success()
+            .stderr(predicate::str::contains("No config path"));
     }
 
     #[test]
@@ -1482,6 +1664,49 @@ Email: john.doe@company.com"#;
         std::env::set_var("HOME", &tmp);
         let config = load_config();
         assert_eq!(config.debug, true);
+
+        fs::remove_dir_all(&tmp).ok();
+        std::env::remove_var("HOME");
+    }
+
+    #[test]
+    fn test_load_config_appdata_fallback() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join(format!("extract_test_appdata_{}", std::process::id()));
+        let cfg_dir = tmp.join("extract");
+        fs::create_dir_all(&cfg_dir).unwrap();
+        fs::write(cfg_dir.join("config.toml"), "debug = true").unwrap();
+
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HOME");
+        std::env::set_var("APPDATA", &tmp);
+        let config = load_config();
+        assert!(config.debug);
+
+        fs::remove_dir_all(&tmp).ok();
+        std::env::remove_var("APPDATA");
+    }
+
+    #[test]
+    fn test_load_config_from_conf_d() {
+        use std::fs;
+
+        let tmp = std::env::temp_dir().join(format!("extract_test_confd_{}", std::process::id()));
+        let cfg_dir = tmp.join("extract");
+        let confd = cfg_dir.join("conf.d");
+        fs::create_dir_all(&confd).unwrap();
+        fs::write(cfg_dir.join("config.toml"), "debug = false").unwrap();
+        fs::write(
+            confd.join("01-extra.toml"),
+            "debug = true\n[custom_regexes]\n\"test\" = \"val\"",
+        )
+        .unwrap();
+
+        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        let config = load_config();
+        assert!(config.debug);
+        assert_eq!(config.custom_regexes.len(), 1);
 
         fs::remove_dir_all(&tmp).ok();
     }
