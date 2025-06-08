@@ -528,7 +528,7 @@ mod tests {
     #[test]
     fn test_version_subcommand() {
         let mut cmd = Command::cargo_bin("extract").unwrap();
-        cmd.arg("version").assert().success().stdout("0.0.1\n");
+        cmd.arg("version").assert().success().stdout("0.0.2\n");
     }
 
     #[test]
@@ -537,7 +537,7 @@ mod tests {
         cmd.arg("--version")
             .assert()
             .success()
-            .stdout(predicate::str::contains("0.0.1"));
+            .stdout(predicate::str::contains("0.0.2"));
     }
 
     #[test]
