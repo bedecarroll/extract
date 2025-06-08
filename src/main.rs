@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use edit::edit;
 use log::{debug, warn, LevelFilter};
 use regex::Regex;
-use std::io::{self, ErrorKind, Read};
+use std::io::{self, ErrorKind, Read, Write};
 use std::net::IpAddr;
 use std::path::Path;
 use std::sync::LazyLock;
@@ -189,13 +189,26 @@ fn load_config() -> AppConfig {
 /// Apply custom regex patterns from the configuration to a text line
 fn custom_regex_matches(s: &str, patterns: &[CustomRule]) -> Vec<String> {
     let mut elements = Vec::new();
+    let mut ranges = Vec::new();
+
     for rule in patterns {
         for caps in rule.regex.captures_iter(s) {
+            if let Some(m) = caps.get(0) {
+                if ranges
+                    .iter()
+                    .any(|r: &std::ops::Range<usize>| r.start == m.start() && r.end == m.end())
+                {
+                    warn!("Multiple custom regex rules matched the same text: '{}'. Results may be duplicated", m.as_str());
+                }
+                ranges.push(m.start()..m.end());
+            }
+
             let mut out = String::new();
             caps.expand(&rule.replace, &mut out);
             elements.push(out);
         }
     }
+
     elements
 }
 
@@ -563,7 +576,13 @@ fn main() {
     }
 
     for token in all_tokens {
-        println!("{token}");
+        if let Err(e) = writeln!(io::stdout(), "{token}") {
+            if e.kind() == ErrorKind::BrokenPipe {
+                std::process::exit(0);
+            } else {
+                std::process::exit(1);
+            }
+        }
     }
 }
 
@@ -1857,5 +1876,53 @@ Email: john.doe@company.com"#;
         assert_eq!(ips, vec!["2001:db8::1", "::1"]);
         // Custom regex creates custom format
         assert_eq!(custom, vec!["2001:db8::1:8080", "::1:443"]);
+    }
+
+    #[test]
+    fn test_custom_regex_conflicting_rules() {
+        let rules = vec![
+            CustomRule {
+                regex: Regex::new(r"(foo)").unwrap(),
+                replace: "one-$1".to_string(),
+            },
+            CustomRule {
+                regex: Regex::new(r"(foo)").unwrap(),
+                replace: "two-$1".to_string(),
+            },
+        ];
+
+        let result = custom_regex_matches("foo", &rules);
+        assert_eq!(result, vec!["one-foo", "two-foo"]);
+    }
+
+    #[test]
+    fn test_load_config_conflicting_custom_regexes() {
+        use std::fs;
+
+        let tmp =
+            std::env::temp_dir().join(format!("extract_test_conflict_{}", std::process::id()));
+        let cfg_dir = tmp.join("extract");
+        let confd = cfg_dir.join("conf.d");
+        fs::create_dir_all(&confd).unwrap();
+
+        fs::write(
+            cfg_dir.join("config.toml"),
+            "debug = false\n[custom_regexes]\n\"(foo)\" = \"first-$1\"\n",
+        )
+        .unwrap();
+        fs::write(
+            confd.join("00-extra.toml"),
+            "debug = false\n[custom_regexes]\n\"(foo)\" = \"second-$1\"\n",
+        )
+        .unwrap();
+
+        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        let config = load_config();
+        assert_eq!(config.custom_regexes.len(), 2);
+
+        let matches = custom_regex_matches("foo", &config.custom_regexes);
+        assert_eq!(matches, vec!["first-foo", "second-foo"]);
+
+        fs::remove_dir_all(&tmp).ok();
     }
 }
