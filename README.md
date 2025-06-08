@@ -98,10 +98,13 @@ Enter your text in the editor and save. If using the stdin fallback, end the inp
 - `--debug`: Enable debug logging
 - `--version`: Show version information
 - `version`: Show version (subcommand)
+- `config print`: Show the loaded configuration
+- `config ls`: List paths checked for configuration files
+- `config generate`: Create a default configuration file
 
 ### Configuration
 
-`extract` also reads an optional configuration file from `$XDG_CONFIG_HOME/extract/config.toml` (or `~/.config/extract/config.toml` when `XDG_CONFIG_HOME` is not set). The file supports a `debug` flag and a `custom_regexes` table mapping regex patterns to replacement strings. Replacements can reference capture groups using `$1`, `$2`, and so on:
+`extract` also reads an optional configuration file from `$XDG_CONFIG_HOME/extract/config.toml`. On Windows this defaults to `%APPDATA%\extract\config.toml`, and on Unix-like systems falls back to `~/.config/extract/config.toml` when `XDG_CONFIG_HOME` is not set. Additional files in a sibling `conf.d` directory are loaded in alphabetical order. These can override settings or extend the `custom_regexes` list. The configuration supports a `debug` flag and a `custom_regexes` table mapping regex patterns to replacement strings. Replacements can reference capture groups using `$1`, `$2`, and so on:
 
 ```toml
 debug = false
