@@ -472,18 +472,36 @@ mod tests {
 
     #[test]
     fn test_remove_port_if_present_ipv4() {
-        assert_eq!(remove_port_if_present("192.168.1.1:8080"), Some("192.168.1.1".to_string()));
-        assert_eq!(remove_port_if_present("192.168.1.1:443"), Some("192.168.1.1".to_string()));
-        assert_eq!(remove_port_if_present("10.0.0.1:65535"), Some("10.0.0.1".to_string()));
+        assert_eq!(
+            remove_port_if_present("192.168.1.1:8080"),
+            Some("192.168.1.1".to_string())
+        );
+        assert_eq!(
+            remove_port_if_present("192.168.1.1:443"),
+            Some("192.168.1.1".to_string())
+        );
+        assert_eq!(
+            remove_port_if_present("10.0.0.1:65535"),
+            Some("10.0.0.1".to_string())
+        );
         assert_eq!(remove_port_if_present("192.168.1.1"), None);
-        assert_eq!(remove_port_if_present("not.an.ip:8080"), Some("not.an.ip".to_string()));
+        assert_eq!(
+            remove_port_if_present("not.an.ip:8080"),
+            Some("not.an.ip".to_string())
+        );
     }
 
     #[test]
     fn test_remove_port_if_present_ipv6() {
-        assert_eq!(remove_port_if_present("[2001:db8::1]:8080"), Some("2001:db8::1".to_string()));
+        assert_eq!(
+            remove_port_if_present("[2001:db8::1]:8080"),
+            Some("2001:db8::1".to_string())
+        );
         assert_eq!(remove_port_if_present("[::1]:443"), Some("::1".to_string()));
-        assert_eq!(remove_port_if_present("2001:db8::1:22222"), Some("2001:db8::1".to_string()));
+        assert_eq!(
+            remove_port_if_present("2001:db8::1:22222"),
+            Some("2001:db8::1".to_string())
+        );
         assert_eq!(remove_port_if_present("2001:db8::1"), None);
         assert_eq!(remove_port_if_present("2001:db8::1:8080"), None); // 8080 <= MAX_INT_IN_V6
     }
@@ -495,7 +513,10 @@ mod tests {
         assert_eq!(remove_port_if_present("192.168.1.1:abc"), None); // Doesn't match MAYBE_PORT (non-numeric)
         assert_eq!(remove_port_if_present("[]:8080"), Some("".to_string())); // Bracket logic extracts empty string
         assert_eq!(remove_port_if_present("test:123"), None); // No dots or brackets, doesn't meet IPv6 high port criteria
-        assert_eq!(remove_port_if_present("a:b:c:d:e:f:10000"), Some("a:b:c:d:e:f".to_string())); // > MAX_INT_IN_V6
+        assert_eq!(
+            remove_port_if_present("a:b:c:d:e:f:10000"),
+            Some("a:b:c:d:e:f".to_string())
+        ); // > MAX_INT_IN_V6
         assert_eq!(remove_port_if_present("a:b:c:d:e:f:8888"), None); // <= MAX_INT_IN_V6
     }
 
@@ -796,7 +817,10 @@ mod tests {
     fn test_cidr_finder_quoted() {
         let input = "\"192.168.1.0/24\" '10.0.0.0/8' \"2001:db8::/32\"";
         let result = cidr_finder(&input);
-        assert_eq!(result, vec!["192.168.1.0/24", "10.0.0.0/8", "2001:db8::/32"]);
+        assert_eq!(
+            result,
+            vec!["192.168.1.0/24", "10.0.0.0/8", "2001:db8::/32"]
+        );
     }
 
     // Tests for MAC address extraction
@@ -863,14 +887,20 @@ mod tests {
     fn test_mac_finder_quoted() {
         let input = "\"00:11:22:33:44:55\" '00-11-22-33-44-66' \"0011.2233.4477\"";
         let result = mac_finder(&input);
-        assert_eq!(result, vec!["00:11:22:33:44:55", "00-11-22-33-44-66", "0011.2233.4477"]);
+        assert_eq!(
+            result,
+            vec!["00:11:22:33:44:55", "00-11-22-33-44-66", "0011.2233.4477"]
+        );
     }
 
     #[test]
     fn test_mac_finder_case_sensitivity() {
         let input = "00:aa:BB:cc:DD:ee AA:BB:CC:DD:EE:FF aabb.ccdd.eeff";
         let result = mac_finder(&input);
-        assert_eq!(result, vec!["00:aa:BB:cc:DD:ee", "AA:BB:CC:DD:EE:FF", "aabb.ccdd.eeff"]);
+        assert_eq!(
+            result,
+            vec!["00:aa:BB:cc:DD:ee", "AA:BB:CC:DD:EE:FF", "aabb.ccdd.eeff"]
+        );
     }
 
     // Tests for IP range extraction
@@ -916,7 +946,14 @@ mod tests {
     fn test_range_finder_quoted() {
         let input = "\"192.168.1.1-192.168.1.10\" '10.0.0.1-10.0.0.5' \"2001:db8::1-2001:db8::10\"";
         let result = range_finder(&input);
-        assert_eq!(result, vec!["192.168.1.1-192.168.1.10", "10.0.0.1-10.0.0.5", "2001:db8::1-2001:db8::10"]);
+        assert_eq!(
+            result,
+            vec![
+                "192.168.1.1-192.168.1.10",
+                "10.0.0.1-10.0.0.5",
+                "2001:db8::1-2001:db8::10"
+            ]
+        );
     }
 
     #[test]
@@ -1309,7 +1346,7 @@ Email: john.doe@company.com"#;
     fn test_load_config_missing_file() {
         let tmp = std::env::temp_dir().join(format!("extract_test_missing_{}", std::process::id()));
         std::env::set_var("XDG_CONFIG_HOME", &tmp);
-        
+
         let config = load_config();
         assert_eq!(config.debug, false);
         assert_eq!(config.custom_regexes.len(), 0);
@@ -1336,10 +1373,15 @@ Email: john.doe@company.com"#;
     fn test_load_config_missing_debug_field() {
         use std::fs;
 
-        let tmp = std::env::temp_dir().join(format!("extract_test_no_debug_{}", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("extract_test_no_debug_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
-        fs::write(cfg_dir.join("config.toml"), "[custom_regexes]\n\"test\" = \"result\"").unwrap();
+        fs::write(
+            cfg_dir.join("config.toml"),
+            "[custom_regexes]\n\"test\" = \"result\"",
+        )
+        .unwrap();
 
         std::env::set_var("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
@@ -1353,7 +1395,8 @@ Email: john.doe@company.com"#;
     fn test_load_config_missing_custom_regexes() {
         use std::fs;
 
-        let tmp = std::env::temp_dir().join(format!("extract_test_no_regexes_{}", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("extract_test_no_regexes_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
         fs::write(cfg_dir.join("config.toml"), "debug = true").unwrap();
@@ -1387,13 +1430,15 @@ Email: john.doe@company.com"#;
     fn test_load_config_non_string_replacement() {
         use std::fs;
 
-        let tmp = std::env::temp_dir().join(format!("extract_test_non_string_{}", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("extract_test_non_string_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
         fs::write(
             cfg_dir.join("config.toml"),
             "debug = false\n[custom_regexes]\n\"test\" = 123\n\"valid\" = \"replacement\"",
-        ).unwrap();
+        )
+        .unwrap();
 
         std::env::set_var("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
@@ -1417,14 +1462,14 @@ Email: john.doe@company.com"#;
         assert!(!MAYBE_PORT.is_match("test8080"));
     }
 
-    #[test] 
+    #[test]
     fn test_large_input_handling() {
         // Test with a large input to ensure no memory issues
         let large_ip_list: Vec<String> = (1..=1000)
             .map(|i| format!("192.168.{}.{}", i / 256, i % 256))
             .collect();
         let input = large_ip_list.join(" ");
-        
+
         let result = ip_finder(&input);
         assert_eq!(result.len(), 1000);
         assert!(result.contains(&"192.168.1.1".to_string()));
@@ -1433,9 +1478,19 @@ Email: john.doe@company.com"#;
 
     #[test]
     fn test_mixed_delimiters_complex() {
-        let input = "ip1:192.168.1.1,ip2:10.0.0.1|ip3:172.16.0.1\tip4:203.0.113.1\nip5:198.51.100.1";
+        let input =
+            "ip1:192.168.1.1,ip2:10.0.0.1|ip3:172.16.0.1\tip4:203.0.113.1\nip5:198.51.100.1";
         let result = ip_finder(&input);
-        assert_eq!(result, vec!["192.168.1.1", "10.0.0.1", "172.16.0.1", "203.0.113.1", "198.51.100.1"]);
+        assert_eq!(
+            result,
+            vec![
+                "192.168.1.1",
+                "10.0.0.1",
+                "172.16.0.1",
+                "203.0.113.1",
+                "198.51.100.1"
+            ]
+        );
     }
 
     #[test]
@@ -1447,7 +1502,7 @@ Email: john.doe@company.com"#;
             "192.168.1.999",
             "gggg:hhhh:iiii:jjjj:kkkk:llll:mmmm:nnnn",
             "00:11:22:33:44:55:66:77", // too many MAC segments
-            "192.168.1.0/999", // invalid CIDR
+            "192.168.1.0/999",         // invalid CIDR
             "192.168.1.1-not.an.ip",
         ];
 
@@ -1456,11 +1511,11 @@ Email: john.doe@company.com"#;
             let cidrs = cidr_finder(input);
             let macs = mac_finder(input);
             let ranges = range_finder(input);
-            
+
             // Should not crash, results may be empty
             assert!(ips.len() <= 10); // reasonable upper bound
             assert!(cidrs.len() <= 10);
-            assert!(macs.len() <= 10); 
+            assert!(macs.len() <= 10);
             assert!(ranges.len() <= 10);
         }
     }
@@ -1475,7 +1530,7 @@ Email: john.doe@company.com"#;
 
         let input = "connect to 192.168.1.1 and server-50 with MAC 00:11:22:33:44:55";
         let ips = ip_finder(input);
-        let macs = mac_finder(input); 
+        let macs = mac_finder(input);
         let custom = custom_regex_matches(input, &rules);
 
         assert_eq!(ips, vec!["192.168.1.1"]);
