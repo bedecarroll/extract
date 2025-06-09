@@ -103,9 +103,9 @@ extract
 Enter your text in the editor and save. If using the stdin fallback, end the
 input with Ctrl-D or EOF on a new line when finished.
 
-### Command Options
+-### Command Options
 
-- `--debug`: Enable debug logging
+- `--log-level <level>`: Set logging verbosity (error, warn, info, debug)
 - `--version`: Show version information
 - `version`: Show version (subcommand)
 - `config print`: Show the loaded configuration
@@ -120,13 +120,13 @@ input with Ctrl-D or EOF on a new line when finished.
 `~/.config/extract/config.toml` when `XDG_CONFIG_HOME` is not set. Additional
 files in a sibling `conf.d` directory are loaded in alphabetical order. These
 can override settings or extend the `custom_regexes` list. The configuration
-supports a `debug` flag, an optional `editor` string, and a `custom_regexes`
+supports a `log_level` option, an optional `editor` string, and a `custom_regexes`
 table mapping regex patterns to replacement strings. Replacements can reference
 capture groups using `$1`, `$2`, and so on. If the configured editor cannot be
 found, the program falls back to reading from stdin:
 
 ```toml
-debug = false
+log_level = "warn"
 # editor to launch for interactive mode (empty string disables the editor)
 editor = "nano"
 # editor = ""
