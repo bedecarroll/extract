@@ -5,9 +5,6 @@
 Welcome to the documentation for **extract**, a command-line utility that parses
 text for network identifiers such as IP addresses, CIDR ranges and MAC addresses.
 
-This site is generated with [mdBook](https://github.com/rust-lang/mdBook) and
-hosted via GitHub Pages.
-
 ## Features
 
 - IPv4 and IPv6 extraction
