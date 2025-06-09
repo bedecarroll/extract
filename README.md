@@ -149,7 +149,7 @@ editor = "nano"
 # "(ocid1\\S+)" = "$0"
 
 # Extract IP:PORT combinations (built-in extractors remove ports)
-# "(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)" = "$1"
+# "\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+" = "$0"
 
 # Extract IPv6 with ports in custom format
 # "\\[([0-9a-fA-F:]+)\\]:(\\d+)" = "$1:$2"
@@ -164,6 +164,7 @@ Custom regexes are applied **after** the built-in extractors, which means:
 1. **Built-in extractors** run first and apply automatic port removal for IP addresses
 2. **Custom regexes** run on the original input text and can capture any
    patterns you define
+   (regexes match across whitespace unless you add anchors like `\b`, `^`, or `$`)
 
 This allows you to use custom regexes to extract patterns that the built-in
 extractors might modify. For example:
