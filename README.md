@@ -21,7 +21,8 @@ unstructured text blobs.
 - **IP Ranges**: Range notation like `192.168.1.1-192.168.1.10`
 - **Smart Parsing**: Handles quotes, brackets, and various delimiters
 - **Complex Text**: Works with logs, support tickets, and mixed content
-- **Debug Logging**: Optional verbose output for troubleshooting
+- **Configurable Logging**: Info logs list matches.  
+  Debug logs show tokenization steps.
 - **Streaming Processing**: Lines are processed one by one for low memory usage
 
 ## Installation
