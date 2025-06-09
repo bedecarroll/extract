@@ -105,6 +105,9 @@ fn config_dirs() -> Vec<std::path::PathBuf> {
     if let Ok(dir) = std::env::var("HOME") {
         dirs.push(Path::new(&dir).join(".config").join("extract"));
     }
+
+    let mut seen = std::collections::HashSet::new();
+    dirs.retain(|p| seen.insert(p.clone()));
     dirs
 }
 
@@ -1799,6 +1802,21 @@ Email: john.doe@company.com"#;
         assert_eq!(config.custom_regexes.len(), 1); // Only the valid one
 
         fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_config_dirs_deduplication() {
+        use std::path::PathBuf;
+
+        let tmp = std::env::temp_dir().join("extract_test_dirs");
+        let xdg = tmp.join(".config");
+        std::env::set_var("XDG_CONFIG_HOME", &xdg);
+        std::env::set_var("HOME", &tmp);
+        std::env::remove_var("APPDATA");
+
+        let dirs = config_dirs();
+        assert_eq!(dirs.len(), 1);
+        assert_eq!(dirs[0], PathBuf::from(&xdg).join("extract"));
     }
 
     // Additional edge case tests
