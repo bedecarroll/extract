@@ -525,6 +525,7 @@ fn gather_interactive_input(config: &AppConfig) -> io::Result<String> {
             io::stdin().read_to_string(&mut input)?;
         } else {
             std::env::set_var("EDITOR", ed);
+            std::env::set_var("VISUAL", ed);
             let editor_env = ed.to_string();
             if which(&editor_env).is_err() {
                 warn!("Editor not found. EDITOR={editor_env:?}");
