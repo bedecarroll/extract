@@ -1,7 +1,7 @@
 #![deny(clippy::pedantic)]
 
 use atty::Stream;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use edit::edit;
 use log::{debug, warn, LevelFilter};
 use regex::Regex;
@@ -53,6 +53,25 @@ enum ConfigCommands {
     Generate,
 }
 
+#[derive(Clone, ValueEnum)]
+enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
+
+impl From<LogLevel> for LevelFilter {
+    fn from(ll: LogLevel) -> Self {
+        match ll {
+            LogLevel::Error => LevelFilter::Error,
+            LogLevel::Warn => LevelFilter::Warn,
+            LogLevel::Info => LevelFilter::Info,
+            LogLevel::Debug => LevelFilter::Debug,
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(
     name = "extract",
@@ -60,13 +79,13 @@ enum ConfigCommands {
     about = "Extract network identifiers from text"
 )]
 struct Cli {
+    /// Set logging level.
+    #[arg(long, value_enum)]
+    log_level: Option<LogLevel>,
+
     /// Files to parse instead of stdin or interactive mode.
     #[arg(value_name = "FILE")]
     files: Vec<std::path::PathBuf>,
-
-    /// Enable debug logging.
-    #[arg(long)]
-    debug: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -78,7 +97,7 @@ struct CustomRule {
 }
 
 fn print_config(cfg: &AppConfig) {
-    println!("debug = {}", cfg.debug);
+    println!("log_level = \"{}\"", cfg.log_level.as_str().to_lowercase());
     if let Some(ref ed) = cfg.editor {
         println!("editor = \"{ed}\"");
     }
@@ -90,11 +109,20 @@ fn print_config(cfg: &AppConfig) {
     }
 }
 
-#[derive(Default)]
 struct AppConfig {
-    debug: bool,
+    log_level: LevelFilter,
     editor: Option<String>,
     custom_regexes: Vec<CustomRule>,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            log_level: LevelFilter::Warn,
+            editor: None,
+            custom_regexes: Vec::new(),
+        }
+    }
 }
 
 /// Return the ordered list of paths where configuration files are searched for.
@@ -143,10 +171,15 @@ fn generate_default_config() -> std::io::Result<std::path::PathBuf> {
 /// `$HOME/.config/extract/config.toml` as a fallback.
 fn merge_config_contents(contents: &str, config: &mut AppConfig) {
     if let Ok(value) = contents.parse::<Value>() {
-        if let Some(d) = value.get("debug").and_then(toml::Value::as_bool) {
-            config.debug = d;
+        if let Some(level) = value.get("log_level").and_then(Value::as_str) {
+            config.log_level = match level.to_ascii_lowercase().as_str() {
+                "error" => LevelFilter::Error,
+                "info" => LevelFilter::Info,
+                "debug" => LevelFilter::Debug,
+                _ => LevelFilter::Warn,
+            };
         }
-        if let Some(ed) = value.get("editor").and_then(toml::Value::as_str) {
+        if let Some(ed) = value.get("editor").and_then(Value::as_str) {
             config.editor = Some(ed.to_string());
         }
         if let Some(map) = value.get("custom_regexes").and_then(|v| v.as_table()) {
@@ -599,14 +632,14 @@ fn process_lines<R: io::BufRead>(reader: R, config: &AppConfig) -> io::Result<()
 fn main() {
     let cli = Cli::parse();
     let config = load_config();
-    let debug_enabled = cli.debug || config.debug;
+
+    let level = cli
+        .log_level
+        .clone()
+        .map_or(config.log_level, LevelFilter::from);
 
     env_logger::Builder::from_default_env()
-        .filter_level(if debug_enabled {
-            LevelFilter::Debug
-        } else {
-            LevelFilter::Info
-        })
+        .filter_level(level)
         .init();
 
     if handle_subcommands(&cli, &config) {
@@ -758,7 +791,7 @@ mod tests {
     #[test]
     fn test_main_debug_flag() {
         let mut cmd = Command::cargo_bin("extract").unwrap();
-        cmd.arg("--debug")
+        cmd.args(["--log-level", "debug"])
             .write_stdin("1.2.3.4\n")
             .assert()
             .success()
@@ -811,7 +844,10 @@ mod tests {
     fn test_config_generate_and_print() {
         use std::fs;
 
-        std::env::set_var("XDG_CONFIG_HOME", std::env::temp_dir());
+        let tmp =
+            std::env::temp_dir().join(format!("extract_test_generate_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", &tmp);
         let path = default_config_path().unwrap();
         let _ = fs::remove_file(&path);
 
@@ -824,9 +860,10 @@ mod tests {
         cmd.args(["config", "print"])
             .assert()
             .success()
-            .stdout(predicate::str::contains("debug = false"));
+            .stdout(predicate::str::contains("log_level = \"warn\""));
 
-        fs::remove_file(path).ok();
+        fs::remove_file(&path).ok();
+        std::fs::remove_dir_all(&tmp).ok();
         std::env::remove_var("XDG_CONFIG_HOME");
     }
 
@@ -839,7 +876,7 @@ mod tests {
             .args(["config", "print"])
             .assert()
             .success()
-            .stdout(predicate::str::contains("debug = false"));
+            .stdout(predicate::str::contains("log_level = \"warn\""));
     }
 
     #[test]
@@ -1567,7 +1604,7 @@ Email: john.doe@company.com"#;
         fs::create_dir_all(&cfg_dir).unwrap();
         fs::write(
             cfg_dir.join("config.toml"),
-            "debug = false\n[custom_regexes]\n\"host-(\\\\d{3})-(\\\\d{3})-(\\\\d{3})\" = \"10.$1.$2.$3\"\n",
+            "log_level = \"warn\"\n[custom_regexes]\n\"host-(\\\\d{3})-(\\\\d{3})-(\\\\d{3})\" = \"10.$1.$2.$3\"\n",
         )
         .unwrap();
 
@@ -1673,7 +1710,7 @@ Email: john.doe@company.com"#;
         std::env::set_var("XDG_CONFIG_HOME", &tmp);
 
         let config = load_config();
-        assert_eq!(config.debug, false);
+        assert_eq!(config.log_level, LevelFilter::Warn);
         assert_eq!(config.custom_regexes.len(), 0);
     }
 
@@ -1688,7 +1725,7 @@ Email: john.doe@company.com"#;
 
         std::env::set_var("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
-        assert_eq!(config.debug, false);
+        assert_eq!(config.log_level, LevelFilter::Warn);
         assert_eq!(config.custom_regexes.len(), 0);
 
         fs::remove_dir_all(&tmp).ok();
@@ -1710,7 +1747,7 @@ Email: john.doe@company.com"#;
 
         std::env::set_var("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
-        assert_eq!(config.debug, false);
+        assert_eq!(config.log_level, LevelFilter::Warn);
         assert_eq!(config.custom_regexes.len(), 1);
 
         fs::remove_dir_all(&tmp).ok();
@@ -1724,11 +1761,11 @@ Email: john.doe@company.com"#;
             std::env::temp_dir().join(format!("extract_test_no_regexes_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
-        fs::write(cfg_dir.join("config.toml"), "debug = true").unwrap();
+        fs::write(cfg_dir.join("config.toml"), "log_level = \"debug\"").unwrap();
 
         std::env::set_var("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
-        assert_eq!(config.debug, true);
+        assert_eq!(config.log_level, LevelFilter::Debug);
         assert_eq!(config.custom_regexes.len(), 0);
 
         fs::remove_dir_all(&tmp).ok();
@@ -1757,12 +1794,12 @@ Email: john.doe@company.com"#;
         let tmp = std::env::temp_dir().join(format!("extract_test_home_{}", std::process::id()));
         let cfg_dir = tmp.join(".config").join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
-        fs::write(cfg_dir.join("config.toml"), "debug = true").unwrap();
+        fs::write(cfg_dir.join("config.toml"), "log_level = \"debug\"").unwrap();
 
         std::env::remove_var("XDG_CONFIG_HOME");
         std::env::set_var("HOME", &tmp);
         let config = load_config();
-        assert_eq!(config.debug, true);
+        assert_eq!(config.log_level, LevelFilter::Debug);
 
         fs::remove_dir_all(&tmp).ok();
         std::env::remove_var("HOME");
@@ -1775,13 +1812,13 @@ Email: john.doe@company.com"#;
         let tmp = std::env::temp_dir().join(format!("extract_test_appdata_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
-        fs::write(cfg_dir.join("config.toml"), "debug = true").unwrap();
+        fs::write(cfg_dir.join("config.toml"), "log_level = \"debug\"").unwrap();
 
         std::env::remove_var("XDG_CONFIG_HOME");
         std::env::remove_var("HOME");
         std::env::set_var("APPDATA", &tmp);
         let config = load_config();
-        assert!(config.debug);
+        assert_eq!(config.log_level, LevelFilter::Debug);
 
         fs::remove_dir_all(&tmp).ok();
         std::env::remove_var("APPDATA");
@@ -1795,16 +1832,16 @@ Email: john.doe@company.com"#;
         let cfg_dir = tmp.join("extract");
         let confd = cfg_dir.join("conf.d");
         fs::create_dir_all(&confd).unwrap();
-        fs::write(cfg_dir.join("config.toml"), "debug = false").unwrap();
+        fs::write(cfg_dir.join("config.toml"), "log_level = \"warn\"").unwrap();
         fs::write(
             confd.join("01-extra.toml"),
-            "debug = true\n[custom_regexes]\n\"test\" = \"val\"",
+            "log_level = \"debug\"\n[custom_regexes]\n\"test\" = \"val\"",
         )
         .unwrap();
 
         std::env::set_var("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
-        assert!(config.debug);
+        assert_eq!(config.log_level, LevelFilter::Debug);
         assert_eq!(config.custom_regexes.len(), 1);
 
         fs::remove_dir_all(&tmp).ok();
@@ -1820,7 +1857,7 @@ Email: john.doe@company.com"#;
         fs::create_dir_all(&cfg_dir).unwrap();
         fs::write(
             cfg_dir.join("config.toml"),
-            "debug = false\n[custom_regexes]\n\"test\" = 123\n\"valid\" = \"replacement\"",
+            "log_level = \"warn\"\n[custom_regexes]\n\"test\" = 123\n\"valid\" = \"replacement\"",
         )
         .unwrap();
 
@@ -2002,12 +2039,12 @@ Email: john.doe@company.com"#;
 
         fs::write(
             cfg_dir.join("config.toml"),
-            "debug = false\n[custom_regexes]\n\"(foo)\" = \"first-$1\"\n",
+            "log_level = \"warn\"\n[custom_regexes]\n\"(foo)\" = \"first-$1\"\n",
         )
         .unwrap();
         fs::write(
             confd.join("00-extra.toml"),
-            "debug = false\n[custom_regexes]\n\"(foo)\" = \"second-$1\"\n",
+            "log_level = \"warn\"\n[custom_regexes]\n\"(foo)\" = \"second-$1\"\n",
         )
         .unwrap();
 

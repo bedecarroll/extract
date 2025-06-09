@@ -7,10 +7,10 @@
 ## Custom Configuration
 
 Create `~/.config/extract/config.toml` to tweak behaviour. You can supply your
-own regex patterns and enable debug logging:
+own regex patterns and adjust logging level:
 
 ```toml
-debug = true
+log_level = "debug"
 custom_regexes = { serial = "SERIAL\\d+" }
 ```
 

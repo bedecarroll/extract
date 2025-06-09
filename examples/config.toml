@@ -1,6 +1,6 @@
 # Example configuration for extract
-# Set debug logging level
-debug = false
+# Set logging level (error, warn, info, debug)
+log_level = "warn"
 # Specify an editor, or set to empty to disable editor usage.
 # If the command is not found, stdin will be used instead.
 editor = "nano"
