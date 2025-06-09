@@ -479,7 +479,115 @@ fn range_finder(s: &str) -> Vec<String> {
     elements
 }
 
-#[allow(clippy::too_many_lines)]
+fn handle_subcommands(cli: &Cli, config: &AppConfig) -> bool {
+    match cli.command {
+        Some(Commands::Version) => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            true
+        }
+        Some(Commands::Config {
+            command: ConfigCommands::Print,
+        }) => {
+            print_config(config);
+            true
+        }
+        Some(Commands::Config {
+            command: ConfigCommands::Ls,
+        }) => {
+            for dir in config_dirs() {
+                println!("{}", dir.join("config.toml").display());
+                println!("{}", dir.join("conf.d").display());
+            }
+            true
+        }
+        Some(Commands::Config {
+            command: ConfigCommands::Generate,
+        }) => {
+            match generate_default_config() {
+                Ok(p) => println!("generated {}", p.display()),
+                Err(e) => eprintln!("{e}"),
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn gather_interactive_input(config: &AppConfig) -> io::Result<String> {
+    let mut input = String::new();
+    let configured = config.editor.as_deref();
+    if let Some(ed) = configured {
+        if ed.is_empty() || ed.eq_ignore_ascii_case("none") {
+            eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
+            io::stdin().read_to_string(&mut input)?;
+        } else {
+            std::env::set_var("EDITOR", ed);
+            let editor_env = ed.to_string();
+            if which(&editor_env).is_err() {
+                warn!("Editor not found. EDITOR={editor_env:?}");
+                eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
+                io::stdin().read_to_string(&mut input)?;
+            } else {
+                debug!("Opening editor ({editor_env:?}) for input. Save and quit to continue.");
+                input = edit("").map_err(io::Error::other)?;
+            }
+        }
+    } else {
+        let editor_env = std::env::var("EDITOR").unwrap_or_default();
+        if editor_env.is_empty() || which(&editor_env).is_err() {
+            if !editor_env.is_empty() {
+                warn!("Editor not found. EDITOR={editor_env:?}");
+            }
+            eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
+            io::stdin().read_to_string(&mut input)?;
+        } else {
+            debug!("Opening $EDITOR ({editor_env:?}) for input. Save and quit to continue.");
+            input = edit("").map_err(io::Error::other)?;
+        }
+    }
+    Ok(input)
+}
+
+fn process_lines<R: io::BufRead>(reader: R, config: &AppConfig) -> io::Result<()> {
+    let mut out = io::stdout();
+    for line in reader.lines() {
+        let line = line?;
+        debug!("Processing line: {line}");
+
+        let mut tokens = Vec::new();
+
+        let ips = ip_finder(&line);
+        debug!("Found IPs: {ips:?}");
+        tokens.extend(ips);
+
+        let cidrs = cidr_finder(&line);
+        debug!("Found CIDRs: {cidrs:?}");
+        tokens.extend(cidrs);
+
+        let macs = mac_finder(&line);
+        debug!("Found MACs: {macs:?}");
+        tokens.extend(macs);
+
+        let ranges = range_finder(&line);
+        debug!("Found ranges: {ranges:?}");
+        tokens.extend(ranges);
+
+        let custom = custom_regex_matches(&line, &config.custom_regexes);
+        debug!("Found custom: {custom:?}");
+        tokens.extend(custom);
+
+        for token in tokens {
+            if let Err(e) = writeln!(out, "{token}") {
+                if e.kind() == ErrorKind::BrokenPipe {
+                    return Ok(());
+                }
+                return Err(e);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     let cli = Cli::parse();
     let config = load_config();
@@ -493,139 +601,22 @@ fn main() {
         })
         .init();
 
-    match cli.command {
-        Some(Commands::Version) => {
-            println!("{}", env!("CARGO_PKG_VERSION"));
-            return;
-        }
-        Some(Commands::Config {
-            command: ConfigCommands::Print,
-        }) => {
-            print_config(&config);
-            return;
-        }
-        Some(Commands::Config {
-            command: ConfigCommands::Ls,
-        }) => {
-            for dir in config_dirs() {
-                println!("{}", dir.join("config.toml").display());
-                println!("{}", dir.join("conf.d").display());
-            }
-            return;
-        }
-        Some(Commands::Config {
-            command: ConfigCommands::Generate,
-        }) => {
-            match generate_default_config() {
-                Ok(p) => println!("generated {}", p.display()),
-                Err(e) => eprintln!("{e}"),
-            }
-            return;
-        }
-        _ => {}
+    if handle_subcommands(&cli, &config) {
+        return;
     }
 
-    let mut input = String::new();
-
-    if atty::is(Stream::Stdin) {
-        let configured = config.editor.as_deref();
-        if let Some(ed) = configured {
-            if ed.is_empty() || ed.eq_ignore_ascii_case("none") {
-                eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
-                if let Err(err) = io::stdin().read_to_string(&mut input) {
-                    eprintln!("Error reading input: {err}");
-                    return;
-                }
-            } else {
-                std::env::set_var("EDITOR", ed);
-                let editor_env = ed.to_string();
-                if which(&editor_env).is_err() {
-                    warn!("Editor not found. EDITOR={editor_env:?}");
-                    eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
-                    if let Err(err) = io::stdin().read_to_string(&mut input) {
-                        eprintln!("Error reading input: {err}");
-                        return;
-                    }
-                } else {
-                    debug!("Opening editor ({editor_env:?}) for input. Save and quit to continue.");
-                    match edit("") {
-                        Ok(text) => input = text,
-                        Err(e) => {
-                            eprintln!("Error launching editor: {e}");
-                            return;
-                        }
-                    }
-                }
-            }
-        } else {
-            let editor_env = std::env::var("EDITOR").unwrap_or_default();
-            if editor_env.is_empty() || which(&editor_env).is_err() {
-                if !editor_env.is_empty() {
-                    warn!("Editor not found. EDITOR={editor_env:?}");
-                }
-                eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
-                if let Err(err) = io::stdin().read_to_string(&mut input) {
-                    eprintln!("Error reading input: {err}");
-                    return;
-                }
-            } else {
-                debug!("Opening $EDITOR ({editor_env:?}) for input. Save and quit to continue.");
-                match edit("") {
-                    Ok(text) => input = text,
-                    Err(e) => {
-                        eprintln!("Error launching editor: {e}");
-                        return;
-                    }
-                }
-            }
-        }
+    let result = if atty::is(Stream::Stdin) {
+        gather_interactive_input(&config).and_then(|input| {
+            let cursor = io::Cursor::new(input);
+            process_lines(cursor, &config)
+        })
     } else {
         let stdin = io::stdin();
-        if let Err(e) = stdin.lock().read_to_string(&mut input) {
-            eprintln!("Error reading input: {e}");
-            return;
-        }
-    }
+        process_lines(stdin.lock(), &config)
+    };
 
-    let mut lines = Vec::new();
-    for line in input.lines() {
-        lines.push(line.to_string());
-    }
-
-    let mut all_tokens = Vec::new();
-    for line in lines {
-        debug!("Processing line: {line}");
-
-        let ips = ip_finder(&line);
-        debug!("Found IPs: {ips:?}");
-        all_tokens.extend(ips);
-
-        let cidrs = cidr_finder(&line);
-        debug!("Found CIDRs: {cidrs:?}");
-        all_tokens.extend(cidrs);
-
-        let macs = mac_finder(&line);
-        debug!("Found MACs: {macs:?}");
-        all_tokens.extend(macs);
-
-        let ranges = range_finder(&line);
-        debug!("Found ranges: {ranges:?}");
-        all_tokens.extend(ranges);
-
-        let custom = custom_regex_matches(&line, &config.custom_regexes);
-        debug!("Found custom: {custom:?}");
-        all_tokens.extend(custom);
-    }
-
-    let mut out = io::stdout();
-    for token in all_tokens {
-        if let Err(e) = writeln!(out, "{token}") {
-            if e.kind() == ErrorKind::BrokenPipe {
-                std::process::exit(0);
-            } else {
-                std::process::exit(1);
-            }
-        }
+    if let Err(e) = result {
+        eprintln!("Error reading input: {e}");
     }
 }
 
