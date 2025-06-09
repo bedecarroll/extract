@@ -115,6 +115,7 @@ extract network.log
 ### Command Options
 
 - `--log-level <level>`: Set logging verbosity (error, warn, info, debug)
+- `--regex <pattern>`: Apply a one-off regular expression (can be repeated)
 - `--version`: Show version information
 - `version`: Show version (subcommand)
 - `config print`: Show the loaded configuration

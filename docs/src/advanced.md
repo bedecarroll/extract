@@ -7,7 +7,8 @@
 ## Custom Configuration
 
 Create `~/.config/extract/config.toml` to tweak behaviour. You can supply your
-own regex patterns and adjust logging level:
+own regex patterns and adjust logging level. For quick one-off patterns, use
+the `--regex` flag on the command line and repeat it for multiple patterns:
 
 ```toml
 log_level = "debug"

@@ -83,6 +83,10 @@ struct Cli {
     #[arg(long, value_enum)]
     log_level: Option<LogLevel>,
 
+    /// Additional one-off regex patterns to apply
+    #[arg(long, value_name = "REGEX")]
+    regex: Vec<String>,
+
     /// Files to parse instead of stdin or interactive mode.
     #[arg(value_name = "FILE")]
     files: Vec<std::path::PathBuf>,
@@ -666,7 +670,7 @@ fn process_lines<R: io::BufRead>(reader: R, config: &AppConfig) -> io::Result<()
 
 fn main() {
     let cli = Cli::parse();
-    let config = load_config();
+    let mut config = load_config();
 
     let level = cli
         .log_level
@@ -679,6 +683,16 @@ fn main() {
 
     if handle_subcommands(&cli, &config) {
         return;
+    }
+
+    for pattern in &cli.regex {
+        match Regex::new(pattern) {
+            Ok(re) => config.custom_regexes.push(CustomRule {
+                regex: re,
+                replace: "$0".to_string(),
+            }),
+            Err(e) => eprintln!("Invalid regex '{pattern}': {e}"),
+        }
     }
 
     let result = if !cli.files.is_empty() {
@@ -2091,5 +2105,30 @@ Email: john.doe@company.com"#;
         assert_eq!(matches, vec!["first-foo", "second-foo"]);
 
         fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_cli_single_regex() {
+        let mut cmd = Command::cargo_bin("extract").unwrap();
+        cmd.args(["--regex", r"\d+\.\d+\.\d+\.\d+:\d+"])
+            .write_stdin("connected 1.2.3.4:8080\n")
+            .assert()
+            .success()
+            .stdout("1.2.3.4\n1.2.3.4:8080\n");
+    }
+
+    #[test]
+    fn test_cli_multiple_regex_flags() {
+        let mut cmd = Command::cargo_bin("extract").unwrap();
+        cmd.args([
+            "--regex",
+            r"\d+\.\d+\.\d+\.\d+:\d+",
+            "--regex",
+            r"server-(\d+)",
+        ])
+        .write_stdin("server-42 10.0.0.1:99\n")
+        .assert()
+        .success()
+        .stdout("10.0.0.1\n10.0.0.1:99\nserver-42\n");
     }
 }
