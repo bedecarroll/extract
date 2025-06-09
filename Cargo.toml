@@ -1,6 +1,6 @@
 [package]
 name = "extract"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Extract network identifiers from text"
 repository = "https://github.com/bedecarroll/extract"
@@ -16,7 +16,7 @@ env_logger = "0.11.8"
 edit = "0.1.5"
 atty = "0.2"
 toml = "0.8"
-which = "4"
+which = "8"
 
 [dev-dependencies]
 assert_cmd = "2.0"
