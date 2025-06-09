@@ -2013,8 +2013,8 @@ Email: john.doe@company.com"#;
     fn test_custom_regex_preserves_ports() {
         // Test that custom regexes can extract IP:PORT while built-in extractors remove ports
         let rules = vec![CustomRule {
-            regex: Regex::new(r"(\d+\.\d+\.\d+\.\d+:\d+)").unwrap(),
-            replace: "$1".to_string(),
+            regex: Regex::new(r"\d+\.\d+\.\d+\.\d+:\d+").unwrap(),
+            replace: "$0".to_string(),
         }];
 
         let input = "server at 192.168.1.1:8080 and 10.0.0.1:443";

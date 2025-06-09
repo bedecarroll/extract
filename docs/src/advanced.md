@@ -11,8 +11,12 @@ own regex patterns and adjust logging level:
 
 ```toml
 log_level = "debug"
-custom_regexes = { serial = "SERIAL\\d+" }
+[custom_regexes]
+"SERIAL\\d+" = "$0"
 ```
+
+These patterns match anywhere on a line. Add word boundaries or anchors to
+prevent capturing text across multiple tokens.
 
 `log_level` controls verbosity. At `info` level, every match is reported. Use
 `debug` for detailed processing steps showing how tokens are parsed and why
