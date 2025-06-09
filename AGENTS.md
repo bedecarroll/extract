@@ -6,10 +6,13 @@ Unit and integration tests are defined in that file as well.
 When modifying Rust source code in this project:
 
 1. Format the code using **rustfmt** via `cargo fmt --all`.
-2. Lint with **clippy** at the pedantic level and deny warnings:
-   `cargo clippy -- -D warnings -W clippy::pedantic`.
-3. Run the full test suite using `cargo test` (unit and integration tests cover many edge cases).
-4. Optionally check performance with Criterion benchmarks using `cargo bench --bench performance`.
-5. Write commit messages using the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.
+2. Lint with **clippy** at the pedantic level and deny warnings: `cargo clippy
+   -- -D warnings -W clippy::pedantic`.
+3. Run the full test suite using `cargo test` (unit and integration tests cover
+   many edge cases).
+4. Optionally check performance with Criterion benchmarks using `cargo bench
+   --bench performance`.
+5. Write commit messages using the [Conventional
+   Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.
 
 Ensure all steps succeed before committing changes.

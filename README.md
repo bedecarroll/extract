@@ -4,7 +4,8 @@
 
 A Rust command-line tool for extracting network identifiers from text input.
 
-See the [online documentation](https://bedecarroll.github.io/extract) for complete usage details.
+See the [online documentation](https://bedecarroll.github.io/extract) for
+complete usage details.
 
 ## Overview
 
@@ -62,7 +63,9 @@ sudo mv extract /usr/local/bin/
 ```
 
 **Windows:**
-Download `extract-windows-x86_64.exe` from the [latest release](https://github.com/bedecarroll/extract/releases/latest) and run directly.
+Download `extract-windows-x86_64.exe` from the [latest
+release](https://github.com/bedecarroll/extract/releases/latest) and run
+directly.
 
 ### Build from Source
 
@@ -89,13 +92,16 @@ Output:
 
 ### Interactive Mode
 
-Run without arguments to launch your `$EDITOR` for interactive input. If no editor is found – including when a configured editor is missing – you'll be prompted to type the text directly:
+Run without arguments to launch your `$EDITOR` for interactive input. If no
+editor is found – including when a configured editor is missing – you'll be
+prompted to type the text directly:
 
 ```bash
 extract
 ```
 
-Enter your text in the editor and save. If using the stdin fallback, end the input with Ctrl-D or EOF on a new line when finished.
+Enter your text in the editor and save. If using the stdin fallback, end the
+input with Ctrl-D or EOF on a new line when finished.
 
 ### Command Options
 
@@ -108,7 +114,16 @@ Enter your text in the editor and save. If using the stdin fallback, end the inp
 
 ### Configuration
 
-`extract` also reads an optional configuration file from `$XDG_CONFIG_HOME/extract/config.toml`. On Windows this defaults to `%APPDATA%\extract\config.toml`, and on Unix-like systems falls back to `~/.config/extract/config.toml` when `XDG_CONFIG_HOME` is not set. Additional files in a sibling `conf.d` directory are loaded in alphabetical order. These can override settings or extend the `custom_regexes` list. The configuration supports a `debug` flag, an optional `editor` string, and a `custom_regexes` table mapping regex patterns to replacement strings. Replacements can reference capture groups using `$1`, `$2`, and so on. If the configured editor cannot be found, the program falls back to reading from stdin:
+`extract` also reads an optional configuration file from
+`$XDG_CONFIG_HOME/extract/config.toml`. On Windows this defaults to
+`%APPDATA%\extract\config.toml`, and on Unix-like systems falls back to
+`~/.config/extract/config.toml` when `XDG_CONFIG_HOME` is not set. Additional
+files in a sibling `conf.d` directory are loaded in alphabetical order. These
+can override settings or extend the `custom_regexes` list. The configuration
+supports a `debug` flag, an optional `editor` string, and a `custom_regexes`
+table mapping regex patterns to replacement strings. Replacements can reference
+capture groups using `$1`, `$2`, and so on. If the configured editor cannot be
+found, the program falls back to reading from stdin:
 
 ```toml
 debug = false
@@ -122,7 +137,7 @@ editor = "nano"
 
 # Capture the entire match using `$0`, useful for custom identifiers
 # like Oracle OCI IDs
-# "(ocid1\S+)" = "$0"
+# "(ocid1\\S+)" = "$0"
 
 # Extract IP:PORT combinations (built-in extractors remove ports)
 # "(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)" = "$1"
@@ -138,14 +153,17 @@ See `examples/config.toml` for a complete example.
 Custom regexes are applied **after** the built-in extractors, which means:
 
 1. **Built-in extractors** run first and apply automatic port removal for IP addresses
-2. **Custom regexes** run on the original input text and can capture any patterns you define
+2. **Custom regexes** run on the original input text and can capture any
+   patterns you define
 
-This allows you to use custom regexes to extract patterns that the built-in extractors might modify. For example:
+This allows you to use custom regexes to extract patterns that the built-in
+extractors might modify. For example:
 
 - Built-in: `192.168.1.1:8080` → extracts `192.168.1.1`
 - Custom regex: `192.168.1.1:8080` → can extract `192.168.1.1:8080` if desired
 
-Both extractions will appear in the output, giving you flexibility to capture both cleaned IPs and full IP:PORT combinations.
+Both extractions will appear in the output, giving you flexibility to capture
+both cleaned IPs and full IP:PORT combinations.
 
 ## Examples
 
