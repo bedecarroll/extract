@@ -9,7 +9,7 @@ echo "Server at 192.168.1.1 connected" | extract
 
 ```bash
 # Process a log file and remove duplicates
-extract < /var/log/firewall.log | sort | uniq
+extract /var/log/firewall.log | sort | uniq
 ```
 
 ```bash
@@ -20,5 +20,5 @@ extract
 
 ```bash
 # Combine with grep to filter for a specific network
-extract < syslog.txt | grep "192.168.1."
+extract syslog.txt | grep "192.168.1."
 ```
