@@ -83,6 +83,10 @@ struct Cli {
     #[arg(long, value_enum)]
     log_level: Option<LogLevel>,
 
+    /// Files to parse instead of stdin or interactive mode.
+    #[arg(value_name = "FILE")]
+    files: Vec<std::path::PathBuf>,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -642,7 +646,13 @@ fn main() {
         return;
     }
 
-    let result = if atty::is(Stream::Stdin) {
+    let result = if !cli.files.is_empty() {
+        cli.files.iter().try_for_each(|path| {
+            std::fs::File::open(path)
+                .map(std::io::BufReader::new)
+                .and_then(|reader| process_lines(reader, &config))
+        })
+    } else if atty::is(Stream::Stdin) {
         gather_interactive_input(&config).and_then(|input| {
             let cursor = io::Cursor::new(input);
             process_lines(cursor, &config)
@@ -804,6 +814,22 @@ mod tests {
             .assert()
             .success()
             .stdout("192.168.1.1\n10.0.0.0/8\n00:11:22:33:44:55\n172.16.1.1-172.16.1.10\n");
+    }
+
+    #[test]
+    fn test_main_reads_from_file() {
+        use std::fs;
+
+        let path = std::env::temp_dir().join("extract_test_input.txt");
+        fs::write(&path, "1.2.3.4 5.6.7.8\n").unwrap();
+
+        let mut cmd = Command::cargo_bin("extract").unwrap();
+        cmd.arg(path.to_str().unwrap())
+            .assert()
+            .success()
+            .stdout("1.2.3.4\n5.6.7.8\n");
+
+        fs::remove_file(path).ok();
     }
 
     #[test]
