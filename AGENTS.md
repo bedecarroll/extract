@@ -12,7 +12,11 @@ When modifying Rust source code in this project:
    many edge cases).
 4. Optionally check performance with Criterion benchmarks using `cargo bench
    --bench performance`.
-5. Write commit messages using the [Conventional
-   Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.
+5. Lint all Markdown files using
+   [`markdownlint-cli2`](https://github.com/DavidAnson/markdownlint-cli2) with
+   `markdownlint-cli2 "**/*.md"`.
+6. Write commit messages using the
+   [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
+   specification.
 
 Ensure all steps succeed before committing changes.
