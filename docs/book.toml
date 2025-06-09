@@ -1,0 +1,12 @@
+[book]
+title = "Extract Documentation"
+authors = ["Project Contributors"]
+language = "en"
+multilingual = false
+src = "src"
+
+[output.html]
+# Use the "ayu" theme for a pleasant reading experience
+default-theme = "ayu"
+
+

@@ -1,6 +1,10 @@
 # extract
 
+![Project Logo](docs/logo.png)
+
 A Rust command-line tool for extracting network identifiers from text input.
+
+See the [online documentation](https://bedecarroll.github.io/extract) for complete usage details.
 
 ## Overview
 
@@ -78,7 +82,7 @@ echo "Server at 192.168.1.1 connected to 10.0.0.0/8" | extract
 
 Output:
 
-```
+```text
 192.168.1.1
 10.0.0.0/8
 ```
@@ -137,7 +141,8 @@ Custom regexes are applied **after** the built-in extractors, which means:
 2. **Custom regexes** run on the original input text and can capture any patterns you define
 
 This allows you to use custom regexes to extract patterns that the built-in extractors might modify. For example:
-- Built-in: `192.168.1.1:8080` → extracts `192.168.1.1` 
+
+- Built-in: `192.168.1.1:8080` → extracts `192.168.1.1`
 - Custom regex: `192.168.1.1:8080` → can extract `192.168.1.1:8080` if desired
 
 Both extractions will appear in the output, giving you flexibility to capture both cleaned IPs and full IP:PORT combinations.
@@ -152,7 +157,7 @@ echo "MAC: 00:11:22:33:44:55 connects to 192.168.1.1:443 via 10.0.0.0/24" | extr
 
 Output:
 
-```
+```text
 192.168.1.1
 10.0.0.0/24
 00:11:22:33:44:55
@@ -178,7 +183,7 @@ echo "Scan range 172.16.1.1-172.16.1.254 excluding 172.16.1.0/28" | extract
 
 Output:
 
-```
+```text
 172.16.1.1-172.16.1.254
 172.16.1.0/28
 ```
