@@ -3,7 +3,7 @@
 use atty::Stream;
 use clap::{Parser, Subcommand, ValueEnum};
 use edit::edit;
-use log::{debug, warn, LevelFilter};
+use log::{debug, info, warn, LevelFilter};
 use regex::Regex;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::IpAddr;
@@ -240,6 +240,7 @@ fn custom_regex_matches(s: &str, patterns: &[CustomRule]) -> Vec<String> {
     let mut ranges = Vec::new();
 
     for rule in patterns {
+        debug!("Applying custom regex: {}", rule.regex.as_str());
         for caps in rule.regex.captures_iter(s) {
             if let Some(m) = caps.get(0) {
                 if ranges
@@ -248,11 +249,13 @@ fn custom_regex_matches(s: &str, patterns: &[CustomRule]) -> Vec<String> {
                 {
                     warn!("Multiple custom regex rules matched the same text: '{}'. Results may be duplicated", m.as_str());
                 }
+                debug!("Custom regex matched: {}", m.as_str());
                 ranges.push(m.start()..m.end());
             }
 
             let mut out = String::new();
             caps.expand(&rule.replace, &mut out);
+            info!("Matched custom: {out}");
             elements.push(out);
         }
     }
@@ -321,6 +324,7 @@ fn ip_finder(s: &str) -> Vec<String> {
     let mut elements = Vec::new();
 
     for chunk in DELIMITERS.split(s) {
+        debug!("Delimiter produced token: {chunk:?}");
         if chunk.is_empty() {
             continue;
         }
@@ -330,15 +334,21 @@ fn ip_finder(s: &str) -> Vec<String> {
 
         // Remove quotes
         processed = strip_quotes(processed);
+        debug!("After strip_quotes: {processed}");
 
         // Try to remove port if present, otherwise use original
         let without_port = remove_port_if_present(processed);
         if let Some(ref port_removed) = without_port {
+            debug!("Removed port: {processed} -> {port_removed}");
             processed = port_removed;
         }
 
         // Remove brackets for IPv6
+        let before_brackets = processed;
         processed = strip_brackets(processed);
+        if processed != before_brackets {
+            debug!("Removed brackets: {before_brackets} -> {processed}");
+        }
 
         if processed.is_empty() {
             continue;
@@ -346,6 +356,7 @@ fn ip_finder(s: &str) -> Vec<String> {
 
         // Check if it's a valid IP after all transformations
         if is_an_ip(processed) {
+            info!("Matched IP: {processed}");
             elements.push(processed.to_string());
             continue;
         }
@@ -354,6 +365,7 @@ fn ip_finder(s: &str) -> Vec<String> {
         if processed.contains('.') && processed.contains(':') {
             if let Some(first) = processed.split(':').next() {
                 if is_an_ip(first) {
+                    info!("Matched IP: {first}");
                     elements.push(first.to_string());
                     continue;
                 }
@@ -372,6 +384,7 @@ fn ip_finder(s: &str) -> Vec<String> {
                 };
 
                 if is_an_ip(&merged) {
+                    info!("Matched IP: {merged}");
                     elements.push(merged);
                 }
             }
@@ -385,11 +398,13 @@ fn cidr_finder(s: &str) -> Vec<String> {
     let mut elements = Vec::new();
 
     for chunk in DELIMITERS.split(s) {
+        debug!("CIDR token: {chunk:?}");
         if chunk.is_empty() || !chunk.contains('/') {
             continue;
         }
 
         let processed = strip_quotes(chunk);
+        debug!("After strip_quotes: {processed}");
 
         if let Some(slash_pos) = processed.find('/') {
             let ip_part = &processed[..slash_pos];
@@ -401,6 +416,7 @@ fn cidr_finder(s: &str) -> Vec<String> {
                     let max_prefix = if is_ipv4 { 32 } else { 128 };
 
                     if prefix <= max_prefix {
+                        info!("Matched CIDR: {processed}");
                         elements.push(processed.to_string());
                     }
                 }
@@ -416,11 +432,13 @@ fn mac_finder(s: &str) -> Vec<String> {
     let mut elements = Vec::new();
 
     for chunk in DELIMITERS.split(s) {
+        debug!("MAC token: {chunk:?}");
         if chunk.is_empty() {
             continue;
         }
 
         let processed = strip_quotes(chunk);
+        debug!("After strip_quotes: {processed}");
 
         // Check for colon format (xx:xx:xx:xx:xx:xx)
         if processed.matches(':').count() == 5 {
@@ -430,6 +448,7 @@ fn mac_finder(s: &str) -> Vec<String> {
                     .iter()
                     .all(|part| part.len() == 2 && part.chars().all(|c| c.is_ascii_hexdigit()))
             {
+                info!("Matched MAC: {processed}");
                 elements.push(processed.to_string());
                 continue;
             }
@@ -443,6 +462,7 @@ fn mac_finder(s: &str) -> Vec<String> {
                     .iter()
                     .all(|part| part.len() == 2 && part.chars().all(|c| c.is_ascii_hexdigit()))
             {
+                info!("Matched MAC: {processed}");
                 elements.push(processed.to_string());
                 continue;
             }
@@ -456,6 +476,7 @@ fn mac_finder(s: &str) -> Vec<String> {
                     .iter()
                     .all(|part| part.len() == 4 && part.chars().all(|c| c.is_ascii_hexdigit()))
             {
+                info!("Matched MAC: {processed}");
                 elements.push(processed.to_string());
             }
         }
@@ -470,17 +491,26 @@ fn range_finder(s: &str) -> Vec<String> {
 
     // First handle arrow-based ranges like "1.1.1.1->2.2.2.2" or "1.1.1.1>2.2.2.2"
     for caps in ARROW_RANGE.captures_iter(s) {
+        debug!("Range arrow candidate: {}", caps.get(0).unwrap().as_str());
         let mut start = strip_quotes(caps.name("start").unwrap().as_str()).to_string();
         if let Some(without_port) = remove_port_if_present(&start) {
+            debug!("Removed port from start: {start} -> {without_port}");
             start = without_port;
         }
         let start_processed = strip_brackets(&start);
+        if start_processed != start {
+            debug!("Removed brackets from start: {start} -> {start_processed}");
+        }
 
         let mut end = strip_quotes(caps.name("end").unwrap().as_str()).to_string();
         if let Some(without_port) = remove_port_if_present(&end) {
+            debug!("Removed port from end: {end} -> {without_port}");
             end = without_port;
         }
         let end_processed = strip_brackets(&end);
+        if end_processed != end {
+            debug!("Removed brackets from end: {end} -> {end_processed}");
+        }
 
         if is_an_ip(start_processed) && is_an_ip(end_processed) {
             let start_is_ipv4 = start_processed.contains('.');
@@ -488,17 +518,21 @@ fn range_finder(s: &str) -> Vec<String> {
 
             if start_is_ipv4 == end_is_ipv4 {
                 let matched = caps.get(0).unwrap().as_str();
-                elements.push(strip_quotes(matched).to_string());
+                let range = strip_quotes(matched);
+                info!("Matched range: {range}");
+                elements.push(range.to_string());
             }
         }
     }
 
     for chunk in DELIMITERS.split(s) {
+        debug!("Range token: {chunk:?}");
         if chunk.is_empty() || !chunk.contains('-') {
             continue;
         }
 
         let processed = strip_quotes(chunk);
+        debug!("After strip_quotes: {processed}");
 
         if let Some(dash_pos) = processed.find('-') {
             let start_ip = &processed[..dash_pos];
@@ -510,6 +544,7 @@ fn range_finder(s: &str) -> Vec<String> {
                 let end_is_ipv4 = end_ip.contains('.');
 
                 if start_is_ipv4 == end_is_ipv4 {
+                    info!("Matched range: {processed}");
                     elements.push(processed.to_string());
                 }
             }
@@ -598,23 +633,23 @@ fn process_lines<R: io::BufRead>(reader: R, config: &AppConfig) -> io::Result<()
         let mut tokens = Vec::new();
 
         let ips = ip_finder(&line);
-        debug!("Found IPs: {ips:?}");
+        info!("Found IPs: {ips:?}");
         tokens.extend(ips);
 
         let cidrs = cidr_finder(&line);
-        debug!("Found CIDRs: {cidrs:?}");
+        info!("Found CIDRs: {cidrs:?}");
         tokens.extend(cidrs);
 
         let macs = mac_finder(&line);
-        debug!("Found MACs: {macs:?}");
+        info!("Found MACs: {macs:?}");
         tokens.extend(macs);
 
         let ranges = range_finder(&line);
-        debug!("Found ranges: {ranges:?}");
+        info!("Found ranges: {ranges:?}");
         tokens.extend(ranges);
 
         let custom = custom_regex_matches(&line, &config.custom_regexes);
-        debug!("Found custom: {custom:?}");
+        info!("Found custom: {custom:?}");
         tokens.extend(custom);
 
         for token in tokens {

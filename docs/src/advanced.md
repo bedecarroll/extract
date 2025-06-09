@@ -14,6 +14,10 @@ log_level = "debug"
 custom_regexes = { serial = "SERIAL\\d+" }
 ```
 
+`log_level` controls verbosity. At `info` level, every match is reported. Use
+`debug` for detailed processing steps showing how tokens are parsed and why
+rules may not match.
+
 ## Benchmarking
 
 Run Criterion benchmarks to gauge performance over time:
