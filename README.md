@@ -103,6 +103,14 @@ extract
 Enter your text in the editor and save. If using the stdin fallback, end the
 input with Ctrl-D or EOF on a new line when finished.
 
+### File Input
+
+Provide one or more file paths to read input directly from those files:
+
+```bash
+extract network.log
+```
+
 ### Command Options
 
 - `--debug`: Enable debug logging
@@ -243,16 +251,16 @@ standard tools:
 
 ```bash
 # Remove duplicates
-extract < input.txt | sort | uniq
+extract input.txt | sort | uniq
 
 # Filter specific types
-extract < logs.txt | grep "192.168"
+extract logs.txt | grep "192.168"
 
 # Count occurrences
-extract < data.txt | sort | uniq -c | sort -nr
+extract data.txt | sort | uniq -c | sort -nr
 
 # Save results
-extract < incident_report.txt > network_assets.txt
+extract incident_report.txt > network_assets.txt
 ```
 
 ## Development Guidelines
