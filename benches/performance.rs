@@ -1,5 +1,5 @@
 use assert_cmd::Command;
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 fn bench_small_input(c: &mut Criterion) {
     let input = "1.2.3.4,5.6.7.8\nEOF\n";
