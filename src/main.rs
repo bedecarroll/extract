@@ -3,7 +3,7 @@
 use atty::Stream;
 use clap::{Parser, Subcommand, ValueEnum};
 use edit::edit;
-use log::{debug, info, warn, LevelFilter};
+use log::{LevelFilter, debug, info, warn};
 use regex::Regex;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::IpAddr;
@@ -251,7 +251,10 @@ fn custom_regex_matches(s: &str, patterns: &[CustomRule]) -> Vec<String> {
                     .iter()
                     .any(|r: &std::ops::Range<usize>| r.start == m.start() && r.end == m.end())
                 {
-                    warn!("Multiple custom regex rules matched the same text: '{}'. Results may be duplicated", m.as_str());
+                    warn!(
+                        "Multiple custom regex rules matched the same text: '{}'. Results may be duplicated",
+                        m.as_str()
+                    );
                 }
                 debug!("Custom regex matched: {}", m.as_str());
                 ranges.push(m.start()..m.end());
@@ -600,8 +603,10 @@ fn gather_interactive_input(config: &AppConfig) -> io::Result<String> {
             eprintln!("Input text. End input with Ctrl-d or EOF on a new line.");
             io::stdin().read_to_string(&mut input)?;
         } else {
-            std::env::set_var("EDITOR", ed);
-            std::env::set_var("VISUAL", ed);
+            unsafe {
+                std::env::set_var("EDITOR", ed);
+                std::env::set_var("VISUAL", ed);
+            }
             let editor_env = ed.to_string();
             if which(&editor_env).is_err() {
                 warn!("Editor not found. EDITOR={editor_env:?}");
@@ -719,8 +724,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_cmd::cargo::CommandCargoExt;
     use assert_cmd::Command;
+    use assert_cmd::cargo::CommandCargoExt;
     use predicates::prelude::*;
     use std::io::{Read, Write};
     use std::process::{Command as StdCommand, Stdio};
