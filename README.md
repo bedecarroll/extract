@@ -1,6 +1,6 @@
 # extract
 
-![Project Logo](docs/logo.png)
+![Project Logo](docs/src/logo.png)
 
 A Rust command-line tool for extracting network identifiers from text input.
 

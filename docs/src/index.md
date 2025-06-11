@@ -1,6 +1,6 @@
 # Extract
 
-![Project Logo](../logo.png)
+![Project Logo](logo.png)
 
 Welcome to the documentation for **extract**, a command-line utility that parses
 text for network identifiers such as IP addresses, CIDR ranges and MAC addresses.
