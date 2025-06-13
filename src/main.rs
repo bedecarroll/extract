@@ -830,7 +830,7 @@ mod tests {
     #[test]
     fn test_version_subcommand() {
         let mut cmd = Command::cargo_bin("extract").unwrap();
-        cmd.arg("version").assert().success().stdout("0.2.0\n");
+        cmd.arg("version").assert().success().stdout("0.2.1\n");
     }
 
     #[test]
@@ -839,7 +839,7 @@ mod tests {
         cmd.arg("--version")
             .assert()
             .success()
-            .stdout(predicate::str::contains("0.2.0"));
+            .stdout(predicate::str::contains("0.2.1"));
     }
 
     #[test]
@@ -901,7 +901,9 @@ mod tests {
         let tmp =
             std::env::temp_dir().join(format!("extract_test_generate_{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        }
         let path = default_config_path().unwrap();
         let _ = fs::remove_file(&path);
 
@@ -918,7 +920,9 @@ mod tests {
 
         fs::remove_file(&path).ok();
         std::fs::remove_dir_all(&tmp).ok();
-        std::env::remove_var("XDG_CONFIG_HOME");
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 
     #[test]
@@ -1662,7 +1666,9 @@ Email: john.doe@company.com"#;
         )
         .unwrap();
 
-        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        }
         let config = load_config();
         assert_eq!(config.custom_regexes.len(), 1);
 
@@ -1670,6 +1676,9 @@ Email: john.doe@company.com"#;
         assert_eq!(out, vec!["10.123.456.789"]);
 
         fs::remove_dir_all(&tmp).ok();
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 
     #[test]
@@ -1761,7 +1770,9 @@ Email: john.doe@company.com"#;
     #[test]
     fn test_load_config_missing_file() {
         let tmp = std::env::temp_dir().join(format!("extract_test_missing_{}", std::process::id()));
-        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        }
 
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Warn);
@@ -1777,12 +1788,17 @@ Email: john.doe@company.com"#;
         fs::create_dir_all(&cfg_dir).unwrap();
         fs::write(cfg_dir.join("config.toml"), "invalid toml content [[[").unwrap();
 
-        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        }
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Warn);
         assert_eq!(config.custom_regexes.len(), 0);
 
         fs::remove_dir_all(&tmp).ok();
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 
     #[test]
@@ -1799,12 +1815,17 @@ Email: john.doe@company.com"#;
         )
         .unwrap();
 
-        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        }
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Warn);
         assert_eq!(config.custom_regexes.len(), 1);
 
         fs::remove_dir_all(&tmp).ok();
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 
     #[test]
@@ -1817,12 +1838,17 @@ Email: john.doe@company.com"#;
         fs::create_dir_all(&cfg_dir).unwrap();
         fs::write(cfg_dir.join("config.toml"), "log_level = \"debug\"").unwrap();
 
-        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        }
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Debug);
         assert_eq!(config.custom_regexes.len(), 0);
 
         fs::remove_dir_all(&tmp).ok();
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 
     #[test]
@@ -1834,11 +1860,16 @@ Email: john.doe@company.com"#;
         fs::create_dir_all(&cfg_dir).unwrap();
         fs::write(cfg_dir.join("config.toml"), "editor = \"nano\"").unwrap();
 
-        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        }
         let config = load_config();
         assert_eq!(config.editor.as_deref(), Some("nano"));
 
         fs::remove_dir_all(&tmp).ok();
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 
     #[test]
@@ -1850,13 +1881,17 @@ Email: john.doe@company.com"#;
         fs::create_dir_all(&cfg_dir).unwrap();
         fs::write(cfg_dir.join("config.toml"), "log_level = \"debug\"").unwrap();
 
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::set_var("HOME", &tmp);
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::set_var("HOME", &tmp);
+        }
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Debug);
 
         fs::remove_dir_all(&tmp).ok();
-        std::env::remove_var("HOME");
+        unsafe {
+            std::env::remove_var("HOME");
+        }
     }
 
     #[test]
@@ -1868,14 +1903,18 @@ Email: john.doe@company.com"#;
         fs::create_dir_all(&cfg_dir).unwrap();
         fs::write(cfg_dir.join("config.toml"), "log_level = \"debug\"").unwrap();
 
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HOME");
-        std::env::set_var("APPDATA", &tmp);
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::remove_var("HOME");
+            std::env::set_var("APPDATA", &tmp);
+        }
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Debug);
 
         fs::remove_dir_all(&tmp).ok();
-        std::env::remove_var("APPDATA");
+        unsafe {
+            std::env::remove_var("APPDATA");
+        }
     }
 
     #[test]
@@ -1893,12 +1932,17 @@ Email: john.doe@company.com"#;
         )
         .unwrap();
 
-        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        }
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Debug);
         assert_eq!(config.custom_regexes.len(), 1);
 
         fs::remove_dir_all(&tmp).ok();
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 
     #[test]
@@ -1915,11 +1959,16 @@ Email: john.doe@company.com"#;
         )
         .unwrap();
 
-        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        }
         let config = load_config();
         assert_eq!(config.custom_regexes.len(), 1); // Only the valid one
 
         fs::remove_dir_all(&tmp).ok();
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 
     #[test]
@@ -1928,13 +1977,19 @@ Email: john.doe@company.com"#;
 
         let tmp = std::env::temp_dir().join("extract_test_dirs");
         let xdg = tmp.join(".config");
-        std::env::set_var("XDG_CONFIG_HOME", &xdg);
-        std::env::set_var("HOME", &tmp);
-        std::env::remove_var("APPDATA");
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &xdg);
+            std::env::set_var("HOME", &tmp);
+            std::env::remove_var("APPDATA");
+        }
 
         let dirs = config_dirs();
         assert_eq!(dirs.len(), 1);
         assert_eq!(dirs[0], PathBuf::from(&xdg).join("extract"));
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::remove_var("HOME");
+        }
     }
 
     // Additional edge case tests
@@ -2102,7 +2157,9 @@ Email: john.doe@company.com"#;
         )
         .unwrap();
 
-        std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &tmp);
+        }
         let config = load_config();
         assert_eq!(config.custom_regexes.len(), 2);
 
@@ -2110,6 +2167,9 @@ Email: john.doe@company.com"#;
         assert_eq!(matches, vec!["first-foo", "second-foo"]);
 
         fs::remove_dir_all(&tmp).ok();
+        unsafe {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
 
     #[test]
