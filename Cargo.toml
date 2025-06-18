@@ -1,6 +1,6 @@
 [package]
 name = "extract"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "Extract network identifiers from text"
 repository = "https://github.com/bedecarroll/extract"
