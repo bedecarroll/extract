@@ -20,7 +20,7 @@
       {
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "extract";
-          version = "0.2.1";
+          version = "0.2.2";
           src = self;
           cargoLock.lockFile = ./Cargo.lock;
         };
