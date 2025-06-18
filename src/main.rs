@@ -5,10 +5,13 @@ use clap::{Parser, Subcommand, ValueEnum};
 use edit::edit;
 use log::{LevelFilter, debug, info, warn};
 use regex::Regex;
+use std::fs::OpenOptions;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::IpAddr;
 use std::path::Path;
+use std::process::Command;
 use std::sync::LazyLock;
+use tempfile::NamedTempFile;
 use toml::Value;
 use which::which;
 
@@ -595,6 +598,44 @@ fn handle_subcommands(cli: &Cli, config: &AppConfig) -> bool {
     }
 }
 
+fn edit_with_tty(text: &str) -> io::Result<String> {
+    if atty::is(Stream::Stdout) && atty::is(Stream::Stdin) && atty::is(Stream::Stderr) {
+        return edit(text).map_err(io::Error::other);
+    }
+
+    let mut file = NamedTempFile::new()?;
+    file.write_all(text.as_bytes())?;
+    let path = file.path().to_owned();
+
+    let editor_cmd = std::env::var("VISUAL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::env::var("EDITOR").ok().filter(|s| !s.is_empty()))
+        .or_else(|| edit::get_editor().ok().map(|p| p.to_string_lossy().into()))
+        .ok_or_else(|| io::Error::new(ErrorKind::NotFound, "No editor found"))?;
+
+    let mut parts = editor_cmd.split_whitespace();
+    let cmd = parts.next().unwrap();
+    let args: Vec<String> = parts.map(str::to_string).collect();
+
+    let mut command = Command::new(cmd);
+    command.args(&args).arg(&path);
+
+    let tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
+    command.stdin(tty.try_clone()?);
+    command.stdout(tty.try_clone()?);
+    command.stderr(tty);
+
+    let status = command.status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!("editor exited with {status}")));
+    }
+
+    let mut contents = String::new();
+    std::fs::File::open(&path)?.read_to_string(&mut contents)?;
+    Ok(contents)
+}
+
 fn gather_interactive_input(config: &AppConfig) -> io::Result<String> {
     let mut input = String::new();
     let configured = config.editor.as_deref();
@@ -614,7 +655,7 @@ fn gather_interactive_input(config: &AppConfig) -> io::Result<String> {
                 io::stdin().read_to_string(&mut input)?;
             } else {
                 debug!("Opening editor ({editor_env:?}) for input. Save and quit to continue.");
-                input = edit("").map_err(io::Error::other)?;
+                input = edit_with_tty("")?;
             }
         }
     } else {
@@ -627,7 +668,7 @@ fn gather_interactive_input(config: &AppConfig) -> io::Result<String> {
             io::stdin().read_to_string(&mut input)?;
         } else {
             debug!("Opening $EDITOR ({editor_env:?}) for input. Save and quit to continue.");
-            input = edit("").map_err(io::Error::other)?;
+            input = edit_with_tty("")?;
         }
     }
     Ok(input)
