@@ -1,6 +1,6 @@
 #![deny(clippy::pedantic)]
 
-use atty::Stream;
+use is_terminal::IsTerminal;
 use clap::{Parser, Subcommand, ValueEnum};
 use edit::edit;
 use log::{LevelFilter, debug, info, warn};
@@ -599,7 +599,7 @@ fn handle_subcommands(cli: &Cli, config: &AppConfig) -> bool {
 }
 
 fn edit_with_tty(text: &str) -> io::Result<String> {
-    if atty::is(Stream::Stdout) && atty::is(Stream::Stdin) && atty::is(Stream::Stderr) {
+    if io::stdout().is_terminal() && io::stdin().is_terminal() && io::stderr().is_terminal() {
         return edit(text).map_err(io::Error::other);
     }
 
@@ -747,7 +747,7 @@ fn main() {
                 .map(std::io::BufReader::new)
                 .and_then(|reader| process_lines(reader, &config))
         })
-    } else if atty::is(Stream::Stdin) {
+    } else if io::stdin().is_terminal() {
         gather_interactive_input(&config).and_then(|input| {
             let cursor = io::Cursor::new(input);
             process_lines(cursor, &config)
