@@ -177,30 +177,35 @@ fn generate_default_config() -> std::io::Result<std::path::PathBuf> {
 /// `%APPDATA%\extract\config.toml` on Windows, or
 /// `$HOME/.config/extract/config.toml` as a fallback.
 fn merge_config_contents(contents: &str, config: &mut AppConfig) {
-    if let Ok(value) = contents.parse::<Value>() {
-        if let Some(level) = value.get("log_level").and_then(Value::as_str) {
-            config.log_level = match level.to_ascii_lowercase().as_str() {
-                "error" => LevelFilter::Error,
-                "info" => LevelFilter::Info,
-                "debug" => LevelFilter::Debug,
-                _ => LevelFilter::Warn,
-            };
-        }
-        if let Some(ed) = value.get("editor").and_then(Value::as_str) {
-            config.editor = Some(ed.to_string());
-        }
-        if let Some(map) = value.get("custom_regexes").and_then(|v| v.as_table()) {
-            for (pattern, replacement) in map {
-                if let Some(repl) = replacement.as_str() {
-                    match Regex::new(pattern) {
-                        Ok(re) => config.custom_regexes.push(CustomRule {
-                            regex: re,
-                            replace: repl.to_string(),
-                        }),
-                        Err(e) => eprintln!("Invalid custom regex '{pattern}': {e}"),
+    match contents.parse::<toml::Table>() {
+        Ok(value) => {
+            if let Some(level) = value.get("log_level").and_then(Value::as_str) {
+                config.log_level = match level.to_ascii_lowercase().as_str() {
+                    "error" => LevelFilter::Error,
+                    "info" => LevelFilter::Info,
+                    "debug" => LevelFilter::Debug,
+                    _ => LevelFilter::Warn,
+                };
+            }
+            if let Some(ed) = value.get("editor").and_then(Value::as_str) {
+                config.editor = Some(ed.to_string());
+            }
+            if let Some(map) = value.get("custom_regexes").and_then(|v| v.as_table()) {
+                for (pattern, replacement) in map {
+                    if let Some(repl) = replacement.as_str() {
+                        match Regex::new(pattern) {
+                            Ok(re) => config.custom_regexes.push(CustomRule {
+                                regex: re,
+                                replace: repl.to_string(),
+                            }),
+                            Err(e) => eprintln!("Invalid custom regex '{pattern}': {e}"),
+                        }
                     }
                 }
             }
+        }
+        Err(err) => {
+            debug!("Failed to parse config TOML: {err}");
         }
     }
 }
@@ -765,14 +770,75 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_cmd::Command;
     use assert_cmd::cargo::CommandCargoExt;
+    use assert_cmd::Command;
+    use escargot::CargoBuild;
     use predicates::prelude::*;
+    use std::ffi::OsStr;
     use std::io::{Read, Write};
     use std::process::{Command as StdCommand, Stdio};
 
     const EXAMPLE_V6_1: &str = "2001:db8::1";
     const EXAMPLE_V6_2: &str = "fdbd:db8::2";
+
+    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set<V: AsRef<OsStr>>(key: &'static str, value: V) -> Self {
+            let original = std::env::var(key).ok();
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = std::env::var(key).ok();
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(ref value) = self.original {
+                unsafe {
+                    std::env::set_var(self.key, value);
+                }
+            } else {
+                unsafe {
+                    std::env::remove_var(self.key);
+                }
+            }
+        }
+    }
+
+    fn cli_cmd() -> Command {
+        Command::cargo_bin("extract").unwrap_or_else(|_| {
+            let build = CargoBuild::new()
+                .bin("extract")
+                .run()
+                .expect("failed to build extract binary");
+            Command::from_std(build.command())
+        })
+    }
+
+    fn cli_std_cmd() -> StdCommand {
+        StdCommand::cargo_bin("extract").unwrap_or_else(|_| {
+            CargoBuild::new()
+                .bin("extract")
+                .run()
+                .expect("failed to build extract binary")
+                .command()
+        })
+    }
 
     // Tests for utility functions
     #[test]
@@ -870,13 +936,13 @@ mod tests {
 
     #[test]
     fn test_version_subcommand() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.arg("version").assert().success().stdout("0.2.2\n");
     }
 
     #[test]
     fn test_main_version_flag() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.arg("--version")
             .assert()
             .success()
@@ -885,7 +951,7 @@ mod tests {
 
     #[test]
     fn test_main_debug_flag() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.args(["--log-level", "debug"])
             .write_stdin("1.2.3.4\n")
             .assert()
@@ -895,7 +961,7 @@ mod tests {
 
     #[test]
     fn test_main_prints_extracted_ips() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.write_stdin("1.2.3.4 5.6.7.8\n")
             .assert()
             .success()
@@ -904,7 +970,7 @@ mod tests {
 
     #[test]
     fn test_main_extracts_all_network_tokens() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.write_stdin("IP: 192.168.1.1, CIDR: 10.0.0.0/8, MAC: 00:11:22:33:44:55, Range: 172.16.1.1-172.16.1.10\n")
             .assert()
             .success()
@@ -918,7 +984,7 @@ mod tests {
         let path = std::env::temp_dir().join("extract_test_input.txt");
         fs::write(&path, "1.2.3.4 5.6.7.8\n").unwrap();
 
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.arg(path.to_str().unwrap())
             .assert()
             .success()
@@ -929,7 +995,7 @@ mod tests {
 
     #[test]
     fn test_config_ls_command() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.args(["config", "ls"]).assert().success().stdout(
             predicate::str::contains("config.toml").and(predicate::str::contains("conf.d")),
         );
@@ -942,18 +1008,17 @@ mod tests {
         let tmp =
             std::env::temp_dir().join(format!("extract_test_generate_{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &tmp);
-        }
+        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _xdg_guard = EnvGuard::set("XDG_CONFIG_HOME", &tmp);
         let path = default_config_path().unwrap();
         let _ = fs::remove_file(&path);
 
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.args(["config", "generate"]).assert().success();
 
         assert!(path.exists());
 
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.args(["config", "print"])
             .assert()
             .success()
@@ -961,14 +1026,11 @@ mod tests {
 
         fs::remove_file(&path).ok();
         std::fs::remove_dir_all(&tmp).ok();
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-        }
     }
 
     #[test]
     fn test_config_print_without_any_config() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.env_remove("XDG_CONFIG_HOME")
             .env_remove("APPDATA")
             .env_remove("HOME")
@@ -980,7 +1042,7 @@ mod tests {
 
     #[test]
     fn test_config_ls_without_any_config() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.env_remove("XDG_CONFIG_HOME")
             .env_remove("APPDATA")
             .env_remove("HOME")
@@ -992,7 +1054,7 @@ mod tests {
 
     #[test]
     fn test_config_generate_without_any_config() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.env_remove("XDG_CONFIG_HOME")
             .env_remove("APPDATA")
             .env_remove("HOME")
@@ -1004,8 +1066,7 @@ mod tests {
 
     #[test]
     fn test_no_panic_on_broken_pipe() {
-        let mut child = StdCommand::cargo_bin("extract")
-            .unwrap()
+        let mut child = cli_std_cmd()
             .stdout(Stdio::piped())
             .stdin(Stdio::piped())
             .spawn()
@@ -1827,19 +1888,15 @@ Email: john.doe@company.com"#;
         let tmp = std::env::temp_dir().join(format!("extract_test_invalid_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
+        let _env_lock = ENV_MUTEX.lock().unwrap();
         fs::write(cfg_dir.join("config.toml"), "invalid toml content [[[").unwrap();
 
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &tmp);
-        }
+        let _xdg_guard = EnvGuard::set("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Warn);
         assert_eq!(config.custom_regexes.len(), 0);
 
         fs::remove_dir_all(&tmp).ok();
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-        }
     }
 
     #[test]
@@ -1850,23 +1907,19 @@ Email: john.doe@company.com"#;
             std::env::temp_dir().join(format!("extract_test_no_debug_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
+        let _env_lock = ENV_MUTEX.lock().unwrap();
         fs::write(
             cfg_dir.join("config.toml"),
             "[custom_regexes]\n\"test\" = \"result\"",
         )
         .unwrap();
 
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &tmp);
-        }
+        let _xdg_guard = EnvGuard::set("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Warn);
         assert_eq!(config.custom_regexes.len(), 1);
 
         fs::remove_dir_all(&tmp).ok();
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-        }
     }
 
     #[test]
@@ -1877,19 +1930,15 @@ Email: john.doe@company.com"#;
             std::env::temp_dir().join(format!("extract_test_no_regexes_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
+        let _env_lock = ENV_MUTEX.lock().unwrap();
         fs::write(cfg_dir.join("config.toml"), "log_level = \"debug\"").unwrap();
 
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &tmp);
-        }
+        let _xdg_guard = EnvGuard::set("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Debug);
         assert_eq!(config.custom_regexes.len(), 0);
 
         fs::remove_dir_all(&tmp).ok();
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-        }
     }
 
     #[test]
@@ -1899,18 +1948,14 @@ Email: john.doe@company.com"#;
         let tmp = std::env::temp_dir().join(format!("extract_test_editor_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
+        let _env_lock = ENV_MUTEX.lock().unwrap();
         fs::write(cfg_dir.join("config.toml"), "editor = \"nano\"").unwrap();
 
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &tmp);
-        }
+        let _xdg_guard = EnvGuard::set("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
         assert_eq!(config.editor.as_deref(), Some("nano"));
 
         fs::remove_dir_all(&tmp).ok();
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-        }
     }
 
     #[test]
@@ -1920,19 +1965,15 @@ Email: john.doe@company.com"#;
         let tmp = std::env::temp_dir().join(format!("extract_test_home_{}", std::process::id()));
         let cfg_dir = tmp.join(".config").join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
+        let _env_lock = ENV_MUTEX.lock().unwrap();
         fs::write(cfg_dir.join("config.toml"), "log_level = \"debug\"").unwrap();
 
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-            std::env::set_var("HOME", &tmp);
-        }
+        let _xdg_guard = EnvGuard::remove("XDG_CONFIG_HOME");
+        let _home_guard = EnvGuard::set("HOME", &tmp);
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Debug);
 
         fs::remove_dir_all(&tmp).ok();
-        unsafe {
-            std::env::remove_var("HOME");
-        }
     }
 
     #[test]
@@ -1942,20 +1983,16 @@ Email: john.doe@company.com"#;
         let tmp = std::env::temp_dir().join(format!("extract_test_appdata_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
+        let _env_lock = ENV_MUTEX.lock().unwrap();
         fs::write(cfg_dir.join("config.toml"), "log_level = \"debug\"").unwrap();
 
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-            std::env::remove_var("HOME");
-            std::env::set_var("APPDATA", &tmp);
-        }
+        let _xdg_guard = EnvGuard::remove("XDG_CONFIG_HOME");
+        let _home_guard = EnvGuard::remove("HOME");
+        let _appdata_guard = EnvGuard::set("APPDATA", &tmp);
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Debug);
 
         fs::remove_dir_all(&tmp).ok();
-        unsafe {
-            std::env::remove_var("APPDATA");
-        }
     }
 
     #[test]
@@ -1966,6 +2003,7 @@ Email: john.doe@company.com"#;
         let cfg_dir = tmp.join("extract");
         let confd = cfg_dir.join("conf.d");
         fs::create_dir_all(&confd).unwrap();
+        let _env_lock = ENV_MUTEX.lock().unwrap();
         fs::write(cfg_dir.join("config.toml"), "log_level = \"warn\"").unwrap();
         fs::write(
             confd.join("01-extra.toml"),
@@ -1973,17 +2011,12 @@ Email: john.doe@company.com"#;
         )
         .unwrap();
 
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &tmp);
-        }
+        let _xdg_guard = EnvGuard::set("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
         assert_eq!(config.log_level, LevelFilter::Debug);
         assert_eq!(config.custom_regexes.len(), 1);
 
         fs::remove_dir_all(&tmp).ok();
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-        }
     }
 
     #[test]
@@ -1994,22 +2027,18 @@ Email: john.doe@company.com"#;
             std::env::temp_dir().join(format!("extract_test_non_string_{}", std::process::id()));
         let cfg_dir = tmp.join("extract");
         fs::create_dir_all(&cfg_dir).unwrap();
+        let _env_lock = ENV_MUTEX.lock().unwrap();
         fs::write(
             cfg_dir.join("config.toml"),
             "log_level = \"warn\"\n[custom_regexes]\n\"test\" = 123\n\"valid\" = \"replacement\"",
         )
         .unwrap();
 
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &tmp);
-        }
+        let _xdg_guard = EnvGuard::set("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
         assert_eq!(config.custom_regexes.len(), 1); // Only the valid one
 
         fs::remove_dir_all(&tmp).ok();
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-        }
     }
 
     #[test]
@@ -2018,19 +2047,14 @@ Email: john.doe@company.com"#;
 
         let tmp = std::env::temp_dir().join("extract_test_dirs");
         let xdg = tmp.join(".config");
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &xdg);
-            std::env::set_var("HOME", &tmp);
-            std::env::remove_var("APPDATA");
-        }
+        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _xdg_guard = EnvGuard::set("XDG_CONFIG_HOME", &xdg);
+        let _home_guard = EnvGuard::set("HOME", &tmp);
+        let _app_guard = EnvGuard::remove("APPDATA");
 
         let dirs = config_dirs();
         assert_eq!(dirs.len(), 1);
         assert_eq!(dirs[0], PathBuf::from(&xdg).join("extract"));
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-            std::env::remove_var("HOME");
-        }
     }
 
     // Additional edge case tests
@@ -2186,6 +2210,7 @@ Email: john.doe@company.com"#;
         let cfg_dir = tmp.join("extract");
         let confd = cfg_dir.join("conf.d");
         fs::create_dir_all(&confd).unwrap();
+        let _env_lock = ENV_MUTEX.lock().unwrap();
 
         fs::write(
             cfg_dir.join("config.toml"),
@@ -2198,9 +2223,7 @@ Email: john.doe@company.com"#;
         )
         .unwrap();
 
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", &tmp);
-        }
+        let _xdg_guard = EnvGuard::set("XDG_CONFIG_HOME", &tmp);
         let config = load_config();
         assert_eq!(config.custom_regexes.len(), 2);
 
@@ -2208,14 +2231,11 @@ Email: john.doe@company.com"#;
         assert_eq!(matches, vec!["first-foo", "second-foo"]);
 
         fs::remove_dir_all(&tmp).ok();
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-        }
     }
 
     #[test]
     fn test_cli_single_regex() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.args(["--regex", r"\d+\.\d+\.\d+\.\d+:\d+"])
             .write_stdin("connected 1.2.3.4:8080\n")
             .assert()
@@ -2225,7 +2245,7 @@ Email: john.doe@company.com"#;
 
     #[test]
     fn test_cli_multiple_regex_flags() {
-        let mut cmd = Command::cargo_bin("extract").unwrap();
+        let mut cmd = cli_cmd();
         cmd.args([
             "--regex",
             r"\d+\.\d+\.\d+\.\d+:\d+",
