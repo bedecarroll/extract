@@ -22,7 +22,7 @@ tempfile = "3"
 [dev-dependencies]
 assert_cmd = "2.0"
 predicates = "3.0"
-criterion = "0.6"
+criterion = "0.7"
 
 [[bench]]
 name = "performance"
