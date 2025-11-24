@@ -9,7 +9,7 @@ keywords = ["network", "parsing", "ip", "mac", "cidr"]
 categories = ["command-line-utilities", "text-processing"]
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 regex = "1"
 log = "0.4"
 env_logger = "0.11.8"
