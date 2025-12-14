@@ -1,8 +1,8 @@
 #![deny(clippy::pedantic)]
 
-use is_terminal::IsTerminal;
 use clap::{Parser, Subcommand, ValueEnum};
 use edit::edit;
+use is_terminal::IsTerminal;
 use log::{LevelFilter, debug, info, warn};
 use regex::Regex;
 use std::fs::OpenOptions;
@@ -770,8 +770,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_cmd::cargo::CommandCargoExt;
     use assert_cmd::Command;
+    use assert_cmd::cargo::CommandCargoExt;
     use escargot::CargoBuild;
     use predicates::prelude::*;
     use std::ffi::OsStr;

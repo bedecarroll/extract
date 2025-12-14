@@ -9,7 +9,7 @@ keywords = ["network", "parsing", "ip", "mac", "cidr"]
 categories = ["command-line-utilities", "text-processing"]
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 regex = "1"
 log = "0.4"
 env_logger = "0.11.8"
@@ -22,7 +22,7 @@ tempfile = "3"
 [dev-dependencies]
 assert_cmd = "2.1"
 predicates = "3.0"
-criterion = "0.7"
+criterion = "0.8"
 escargot = "0.5"
 
 [[bench]]
