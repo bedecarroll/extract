@@ -54,7 +54,7 @@ jobs:
         run: cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} ${{ matrix.archive_name }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.archive_name }}
           path: ${{ matrix.archive_name }}
