@@ -229,11 +229,12 @@ fn load_config() -> AppConfig {
             let mut files: Vec<_> = entries.filter_map(std::result::Result::ok).collect();
             files.sort_by_key(std::fs::DirEntry::file_name);
             for entry in files {
-                if entry.path().extension() == Some(OsStr::new("toml")) {
-                    if let Ok(contents) = std::fs::read_to_string(entry.path()) {
-                        merge_config_contents(&contents, &mut config);
-                        found = true;
-                    }
+                let path = entry.path();
+                if path.extension() == Some(OsStr::new("toml"))
+                    && let Ok(contents) = std::fs::read_to_string(&path)
+                {
+                    merge_config_contents(&contents, &mut config);
+                    found = true;
                 }
             }
         }
@@ -305,10 +306,11 @@ fn strip_brackets(s: &str) -> &str {
 /// Removes port numbers from IP addresses, returning the IP part as a string
 fn remove_port_if_present(s: &str) -> Option<String> {
     // Handle bracketed IPv6 with port: [::1]:8080
-    if s.starts_with('[') && s.contains("]:") {
-        if let Some(bracket_end) = s.find("]:") {
-            return Some(s[1..bracket_end].to_string());
-        }
+    if s.starts_with('[')
+        && s.contains("]:")
+        && let Some(bracket_end) = s.find("]:")
+    {
+        return Some(s[1..bracket_end].to_string());
     }
 
     // Handle cases with dots or brackets and potential ports
@@ -320,15 +322,14 @@ fn remove_port_if_present(s: &str) -> Option<String> {
     }
 
     // Handle IPv6 addresses with high port numbers (> MAX_INT_IN_V6)
-    if s.matches(':').count() > 1 && !s.contains(']') {
-        if let Some(last) = s.rsplit(':').next() {
-            if let Ok(num) = last.parse::<u32>() {
-                if num > MAX_INT_IN_V6 {
-                    let parts: Vec<&str> = s.split(':').collect();
-                    return Some(parts[..parts.len() - 1].join(":"));
-                }
-            }
-        }
+    if s.matches(':').count() > 1
+        && !s.contains(']')
+        && let Some(last) = s.rsplit(':').next()
+        && let Ok(num) = last.parse::<u32>()
+        && num > MAX_INT_IN_V6
+    {
+        let parts: Vec<&str> = s.split(':').collect();
+        return Some(parts[..parts.len() - 1].join(":"));
     }
 
     None
@@ -377,14 +378,14 @@ fn ip_finder(s: &str) -> Vec<String> {
         }
 
         // Handle cases like "src:1.1.1.1" where we want the part after the colon
-        if processed.contains('.') && processed.contains(':') {
-            if let Some(first) = processed.split(':').next() {
-                if is_an_ip(first) {
-                    info!("Matched IP: {first}");
-                    elements.push(first.to_string());
-                    continue;
-                }
-            }
+        if processed.contains('.')
+            && processed.contains(':')
+            && let Some(first) = processed.split(':').next()
+            && is_an_ip(first)
+        {
+            info!("Matched IP: {first}");
+            elements.push(first.to_string());
+            continue;
         }
 
         // Handle cases where IP might be after the first colon
@@ -425,15 +426,15 @@ fn cidr_finder(s: &str) -> Vec<String> {
             let ip_part = &processed[..slash_pos];
             let prefix_part = &processed[slash_pos + 1..];
 
-            if let Ok(prefix) = prefix_part.parse::<u8>() {
-                if is_an_ip(ip_part) {
-                    let is_ipv4 = ip_part.contains('.');
-                    let max_prefix = if is_ipv4 { 32 } else { 128 };
+            if let Ok(prefix) = prefix_part.parse::<u8>()
+                && is_an_ip(ip_part)
+            {
+                let is_ipv4 = ip_part.contains('.');
+                let max_prefix = if is_ipv4 { 32 } else { 128 };
 
-                    if prefix <= max_prefix {
-                        info!("Matched CIDR: {processed}");
-                        elements.push(processed.to_string());
-                    }
+                if prefix <= max_prefix {
+                    info!("Matched CIDR: {processed}");
+                    elements.push(processed.to_string());
                 }
             }
         }
