@@ -12,16 +12,16 @@ categories = ["command-line-utilities", "text-processing"]
 clap = { version = "4.5", features = ["derive"] }
 regex = "1"
 log = "0.4"
-env_logger = "0.11.8"
+env_logger = "0.11.9"
 edit = "0.1.5"
 is-terminal = "0.4"
-toml = "0.9"
+toml = "1.0"
 which = "8"
 tempfile = "3"
 
 [dev-dependencies]
 assert_cmd = "2.1"
-predicates = "3.0"
+predicates = "3.1"
 criterion = "0.8"
 escargot = "0.5"
 
