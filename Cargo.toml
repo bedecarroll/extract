@@ -12,10 +12,10 @@ categories = ["command-line-utilities", "text-processing"]
 clap = { version = "4.6", features = ["derive"] }
 regex = "1"
 log = "0.4"
-env_logger = "0.11.9"
+env_logger = "0.11.10"
 edit = "0.1.5"
 is-terminal = "0.4"
-toml = "1.0"
+toml = "1.1"
 which = "8"
 tempfile = "3"
 
