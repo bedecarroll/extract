@@ -1,0 +1,30 @@
+min_version = "2025.9.10"
+
+[tools]
+"cargo:cargo-deny" = "latest"
+"cargo:cargo-nextest" = "latest"
+
+[tasks.fmt]
+description = "Format all source files"
+run = ["cargo fmt --all"]
+
+[tasks.lint]
+description = "Clippy (pedantic), typos, and dependency audit"
+run = [
+  "cargo fmt --all --check",
+  "cargo clippy --all-targets --all-features -- -D warnings",
+  "typos",
+  "cargo deny check",
+]
+
+[tasks.lint-fix]
+description = "Auto-fix formatting and spelling issues"
+run = ["cargo fmt --all", "typos -w"]
+
+[tasks.test]
+description = "Run the nextest test suite"
+run = ["cargo nextest run --all-targets"]
+
+[tasks.check]
+description = "Aggregate format, lint, and test runs"
+depends = ["fmt", "lint", "test"]

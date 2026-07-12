@@ -1,0 +1,35 @@
+[package]
+name = "extract"
+version = "0.2.2"
+edition = "2024"
+rust-version = "1.96"
+description = "Extract network identifiers from text"
+repository = "https://github.com/bedecarroll/extract"
+license = "MIT"
+keywords = ["network", "parsing", "ip", "mac", "cidr"]
+categories = ["command-line-utilities", "text-processing"]
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+
+[dependencies]
+clap = { version = "4.6", features = ["derive"] }
+regex = "1"
+log = "0.4"
+env_logger = "0.11.10"
+edit = "0.1.5"
+is-terminal = "0.4"
+toml = "1.1"
+which = "8"
+tempfile = "3"
+
+[dev-dependencies]
+assert_cmd = "2.2"
+predicates = "3.1"
+criterion = "0.8"
+escargot = "0.5"
+
+[[bench]]
+name = "performance"
+harness = false
